@@ -141,16 +141,16 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		//#region lib/styles.js
-		const css = `.rcx-entry{appearance:none;display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;margin:1px 8px;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);background:0 0;border:none;border-radius:8px;cursor:pointer;text-align:left}
+		const css = `.rcx-entry{appearance:none;display:flex;align-items:center;gap:8px;width:100%;height:36px;padding:0 10px;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);background:0 0;border:none;border-radius:8px;cursor:pointer;text-align:left}
 .rcx-entry:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .rcx-entry[data-active="true"]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.rcx-entryIcon{display:grid;place-items:center;flex:none;color:var(--dsw-alias-label-tertiary)}
+.rcx-entryIcon{justify-content:center;align-items:center;width:24px;height:24px;display:inline-flex;flex:none;color:var(--dsw-alias-label-tertiary)}
 .rcx-entryLabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rcx-scrim{position:fixed;inset:0;z-index:90;background:color-mix(in srgb, var(--dsw-alias-bg-mask-2, rgba(0,0,0,.45)) 100%, transparent);display:flex;align-items:center;justify-content:center;padding:24px}
 .rcx-card{width:100%;max-width:760px;max-height:min(80vh,640px);border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-specific-tip);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 24px var(--dsw-alias-bg-mask-2, rgba(0,0,0,.35))}
 .rcx-card,.rcx-card *{box-sizing:border-box}
 .rcx-head{display:flex;flex-direction:column;gap:2px;padding:14px 0 10px}
-.rcx-titleRow{display:flex;align-items:baseline;gap:10px;padding:0 16px}
+.rcx-titleRow{display:flex;align-items:baseline;gap:8px;padding:0 16px}
 .rcx-title{font-size:14px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-primary)}
 .rcx-path{min-width:0;flex:1;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rcx-closeBtn{flex:none;width:28px;height:28px;display:grid;place-items:center;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:999px}
