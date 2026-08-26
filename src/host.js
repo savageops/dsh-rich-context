@@ -282,40 +282,52 @@ export function apply(ctx) {
             addSource(join(home, file), `Home root (${file})`, 'home')
           }
 
-          // 3. Workspace roots (from sessions dir slugs) — repo-level AGENTS.md
-          for (const slug of workspaceSlugs()) {
-            // Decode slug to path: strip -- delimiters, replace remaining -- with /
-            // Slugs use double-hyphen as path separator between the wrapping --
-            const decoded = slug.replaceAll('--', '/')
-            const root = decoded.startsWith('/') ? decoded : `/${decoded}`
-            for (const file of ['AGENTS.md', 'CLAUDE.md']) {
-              const p = join(root, file)
-              if (existsSync(p)) addSource(p, `${slug} (${file})`, 'workspace-root')
-            }
-            // 4. .refs/ subdirectories within each workspace
-            const refsDir = join(root, '.refs')
-            if (existsSync(refsDir)) {
-              try {
-                for (const entry of readdirSync(refsDir, { withFileTypes: true })) {
-                  if (!entry.isDirectory()) continue
-                  for (const file of ['AGENTS.md', 'CLAUDE.md']) {
-                    const p = join(refsDir, entry.name, file)
-                    if (existsSync(p)) addSource(p, `.refs/${entry.name} (${file})`, 'reference')
-                  }
-                  // Also check one level deeper (e.g. .refs/networking/netbird/)
-                  const subDir = join(refsDir, entry.name)
-                  try {
-                    for (const sub of readdirSync(subDir, { withFileTypes: true })) {
-                      if (!sub.isDirectory()) continue
-                      for (const file of ['AGENTS.md', 'CLAUDE.md']) {
-                        const p = join(subDir, sub.name, file)
-                        if (existsSync(p)) addSource(p, `.refs/${entry.name}/${sub.name} (${file})`, 'reference')
-                      }
-                    }
-                  } catch { /* not readable */ }
+          // 3. Direct filesystem scan — workspace roots + .refs/ reference repos.
+          // Slug decoding is ambiguous (hyphens in dir names vs separators), so
+          // we scan the actual filesystem instead.
+          const scanRoots = [
+            { dir: '/home/github', label: 'github', depth: 2 },
+            { dir: home, label: 'home', depth: 1 },
+          ]
+          for (const { dir: scanDir, label: scanLabel, depth } of scanRoots) {
+            if (!existsSync(scanDir)) continue
+            try {
+              for (const entry of readdirSync(scanDir, { withFileTypes: true })) {
+                if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue
+                const repoDir = join(scanDir, entry.name)
+                // Repo root AGENTS.md/CLAUDE.md
+                for (const file of ['AGENTS.md', 'CLAUDE.md']) {
+                  const p = join(repoDir, file)
+                  if (existsSync(p)) addSource(p, `${entry.name} (${file})`, 'workspace-root')
                 }
-              } catch { /* not readable */ }
-            }
+                // .refs/ subdirectories (reference repos)
+                if (depth >= 2) {
+                  const refsDir = join(repoDir, '.refs')
+                  if (existsSync(refsDir)) {
+                    try {
+                      for (const ref of readdirSync(refsDir, { withFileTypes: true })) {
+                        if (!ref.isDirectory()) continue
+                        for (const file of ['AGENTS.md', 'CLAUDE.md']) {
+                          const p = join(refsDir, ref.name, file)
+                          if (existsSync(p)) addSource(p, `${entry.name}/.refs/${ref.name} (${file})`, 'reference')
+                        }
+                        // One level deeper for nested .refs/ (e.g. .refs/networking/netbird)
+                        const refSub = join(refsDir, ref.name)
+                        try {
+                          for (const nested of readdirSync(refSub, { withFileTypes: true })) {
+                            if (!nested.isDirectory()) continue
+                            for (const file of ['AGENTS.md', 'CLAUDE.md']) {
+                              const p = join(refSub, nested.name, file)
+                              if (existsSync(p)) addSource(p, `${entry.name}/.refs/${ref.name}/${nested.name} (${file})`, 'reference')
+                            }
+                          }
+                        } catch { /* not readable */ }
+                      }
+                    } catch { /* not readable */ }
+                  }
+                }
+              }
+            } catch { /* not readable */ }
           }
 
           // Sort: existing first, then by category (workspace-root > reference > tool-config > home)
