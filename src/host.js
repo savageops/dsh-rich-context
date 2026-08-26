@@ -211,12 +211,16 @@ export function apply(ctx) {
             writeJson(res, error?.message === 'body-too-large' ? 413 : 400, { ok: false, error: error?.message ?? 'bad-request' })
             return
           }
-          if (typeof body !== 'object' || body === null || typeof body.content !== 'string' || (body.scope !== 'global' && body.scope !== 'workspace')) {
+          if (typeof body !== 'object' || body === null || typeof body.content !== 'string' || (body.scope !== 'global' && body.scope !== 'workspace' && body.scope !== 'custom')) {
             writeJson(res, 400, { ok: false, error: 'invalid-body' })
             return
           }
           let path
-          if (body.scope === 'global') path = GLOBAL_FILE
+          if (body.scope === 'custom') {
+            if (typeof body.path !== 'string' || body.path === '' || !body.path.startsWith('/') || body.path.includes('..')) { writeJson(res, 400, { ok: false, error: 'invalid-path' }); return }
+            path = body.path
+          }
+          else if (body.scope === 'global') path = GLOBAL_FILE
           else {
             const root = slugToPath(typeof body.workspace === 'string' ? body.workspace : '')
             if (root === '' || root.includes('..')) { writeJson(res, 400, { ok: false, error: 'invalid-workspace' }); return }

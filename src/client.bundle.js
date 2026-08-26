@@ -31,6 +31,8 @@ window.__ModuleLoader__.load({
 			"action.saving": "saving…",
 			"action.dirty": "unsaved changes",
 			"action.close": "Close",
+			"path.edit": "Click to edit path",
+			"path.invalid": "Must be an absolute path (start with /)",
 			"error.generic": "failed",
 			"effect.global": "Applies to new sessions immediately.",
 			"effect.workspace": "Workspace sessions pick this up through file-activity sync."
@@ -58,6 +60,8 @@ window.__ModuleLoader__.load({
 			"action.saving": "保存中…",
 			"action.dirty": "有未保存修改",
 			"action.close": "关闭",
+			"path.edit": "点击编辑路径",
+			"path.invalid": "必须是绝对路径（以 / 开头）",
 			"error.generic": "失败",
 			"effect.global": "对新会话立即生效。",
 			"effect.workspace": "工作区会话通过文件活动同步感知变更。"
@@ -147,12 +151,13 @@ window.__ModuleLoader__.load({
 .rcx-entryIcon{justify-content:center;align-items:center;width:24px;height:24px;display:inline-flex;flex:none;color:var(--dsw-alias-label-tertiary)}
 .rcx-entryLabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rcx-scrim{position:fixed;inset:0;z-index:90;background:color-mix(in srgb, var(--dsw-alias-bg-mask-2, rgba(0,0,0,.45)) 100%, transparent);display:flex;align-items:center;justify-content:center;padding:24px}
-.rcx-card{width:100%;max-width:760px;max-height:min(80vh,640px);border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-specific-tip);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 24px var(--dsw-alias-bg-mask-2, rgba(0,0,0,.35))}
+.rcx-card{width:100%;max-width:960px;max-height:min(88vh,780px);border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-specific-tip);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 24px var(--dsw-alias-bg-mask-2, rgba(0,0,0,.35))}
 .rcx-card,.rcx-card *{box-sizing:border-box}
 .rcx-head{display:flex;flex-direction:column;gap:2px;padding:14px 0 10px}
 .rcx-titleRow{display:flex;align-items:baseline;gap:8px;padding:0 16px}
 .rcx-title{font-size:14px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-primary)}
-.rcx-path{min-width:0;flex:1;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcx-path{min-width:0;flex:1;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;text-decoration:underline dotted}
+.rcx-pathInput{min-width:0;flex:1;border:1px solid var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-size:12px;line-height:16px;font-family:ui-monospace,monospace;padding:2px 6px;border-radius:6px;outline:none}
 .rcx-closeBtn{flex:none;width:28px;height:28px;display:grid;place-items:center;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:999px}
 .rcx-closeBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .rcx-subtitle{padding:0 16px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px}
@@ -168,16 +173,16 @@ window.__ModuleLoader__.load({
 .rcx-editor{flex:1;min-height:0;width:100%;resize:none;border:none;outline:none;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:ui-monospace,monospace;font-size:12.5px;line-height:19px;padding:10px 16px;scrollbar-width:none}
 .rcx-editor::-webkit-scrollbar{display:none}
 .rcx-empty{padding:2px 16px;color:var(--dsw-alias-label-caption);font-size:11px;line-height:14px}
-.rcx-templates{border-top:1px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column}
-.rcx-templatesHead{display:flex;align-items:baseline;gap:8px;padding:8px 16px 2px}
-.rcx-templatesTitle{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:14px;text-transform:uppercase;letter-spacing:.05em}
-.rcx-templatesHint{flex:1;color:var(--dsw-alias-label-caption);font-size:11px;line-height:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rcx-templateList{display:flex;flex-wrap:wrap;gap:6px;padding:6px 16px 10px}
-.rcx-templateChip{appearance:none;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);border:none;border-radius:999px;padding:3px 10px;font:inherit;font-size:12px;line-height:16px;cursor:pointer}
-.rcx-templateChip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);text-decoration:underline}
-.rcx-templateChipUser{padding-right:4px;display:inline-flex;align-items:center;gap:2px}
-.rcx-templateDel{width:16px;height:16px;display:grid;place-items:center;border:none;background:0 0;color:var(--dsw-alias-label-caption);cursor:pointer;border-radius:999px;font-size:12px;line-height:1}
-.rcx-templateDel:hover{color:var(--dsw-alias-state-error-primary);background:var(--dsw-alias-interactive-bg-hover)}
+.
+.
+.
+.
+.
+.
+.
+.
+.
+.
 .rcx-footer{display:flex;align-items:stretch;border-top:1px solid var(--dsw-alias-border-l1)}
 .rcx-status{flex:1;align-self:center;min-width:0;padding:0 12px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rcx-statusErr{color:var(--dsw-alias-state-error-primary)}
@@ -231,7 +236,39 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		//#region lib/panel.js
-		/** The manager overlay: two tabs (Global / Workspace), editor, templates, save. */
+
+		/** Click-to-edit path field: shows the current file path; click to type a custom absolute path. */
+		function PathField({ path, onPathChange }) {
+			const [editing, setEditing] = (0, react.useState)(false);
+			const [draft, setDraft] = (0, react.useState)(path);
+			const commit = () => {
+				const trimmed = draft.trim();
+				if (trimmed.startsWith("/") && trimmed !== path) onPathChange(trimmed);
+				else setDraft(path);
+				setEditing(false);
+			};
+			if (editing) return (0, react_jsx_runtime.jsx)("input", {
+				type: "text",
+				className: "rcx-pathInput",
+				value: draft,
+				autoFocus: true,
+				spellCheck: false,
+				onChange: (event) => setDraft(event.target.value),
+				onBlur: commit,
+				onKeyDown: (event) => {
+					event.stopPropagation();
+					if (event.key === "Enter") commit();
+					if (event.key === "Escape") { setDraft(path); setEditing(false); }
+				}
+			});
+			return (0, react_jsx_runtime.jsx)("span", {
+				className: "rcx-path",
+				title: "Click to edit path",
+				onClick: () => { setDraft(path); setEditing(true); },
+				children: path
+			});
+		}
+		/** The manager overlay: two tabs (Global / Workspace) + custom path routing, editor, save. */
 		function ContextPanel({ onClose }) {
 			const [state, setState] = (0, react.useState)(null);
 			const [tab, setTab] = (0, react.useState)("global");
@@ -240,6 +277,7 @@ window.__ModuleLoader__.load({
 			const [saved, setSaved] = (0, react.useState)(null);
 			const [busy, setBusy] = (0, react.useState)(false);
 			const [status, setStatus] = (0, react.useState)(null);
+			const [customPath, setCustomPath] = (0, react.useState)(null);
 
 			(0, react.useEffect)(() => {
 				fetchState().then(setState).catch((cause) => setStatus({ kind: "error", text: cause instanceof Error ? cause.message : String(cause) }));
@@ -251,14 +289,32 @@ window.__ModuleLoader__.load({
 				fetchFile(nextTab, nextWorkspace).then((body) => { setContent(body.content ?? ""); setSaved(body.content ?? ""); }).catch((cause) => setStatus({ kind: "error", text: cause instanceof Error ? cause.message : String(cause) }));
 			}, []);
 			(0, react.useEffect)(() => { if (tab === "global") loadFile("global", ""); }, [tab, loadFile]);
+			const loadCustomFile = (0, react.useCallback)((path) => {
+				setSaved(null);
+				setStatus(null);
+				fetch(`${API}/file?scope=custom&path=${encodeURIComponent(path)}`, { cache: "no-store" })
+					.then((res) => res.json())
+					.then((body) => { if (body.ok) { setContent(body.content ?? ""); setSaved(body.content ?? ""); } else throw new Error(body.error); })
+					.catch((cause) => setStatus({ kind: "error", text: cause instanceof Error ? cause.message : String(cause) }));
+			}, []);
 			(0, react.useEffect)(() => { if (tab === "workspace" && workspace !== "") loadFile("workspace", workspace); }, [tab, workspace, loadFile]);
 
 			const dirty = content !== (saved ?? "");
-			const filePath = tab === "global" ? (state?.globalPath ?? "~/.dsh/AGENTS.md") : workspace !== "" ? `${workspace.replaceAll("--", "/")}/AGENTS.md` : "";
+			const filePath = customPath !== null ? customPath : tab === "global" ? (state?.globalPath ?? "~/.dsh/AGENTS.md") : workspace !== "" ? `${workspace.replaceAll("--", "/")}/AGENTS.md` : "";
 
 			const save = () => {
 				setBusy(true);
-				saveFile(tab, workspace, content).then(() => { setSaved(content); setStatus({ kind: "ok", text: `${t("action.saved")} — ${tab === "global" ? t("effect.global") : t("effect.workspace")}` }); }).catch((cause) => setStatus({ kind: "error", text: `${t("error.generic")}: ${cause instanceof Error ? cause.message : String(cause)}` })).finally(() => setBusy(false));
+				const effectiveScope = customPath !== null ? "custom" : tab;
+				const pathBody = customPath !== null ? { scope: "custom", path: customPath, content } : { scope: tab, workspace, content };
+				fetch(`${API}/file`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(pathBody) })
+					.then((res) => res.json())
+					.then((body) => {
+						if (!body.ok) throw new Error(body.error);
+						setSaved(content);
+						setStatus({ kind: "ok", text: `${t("action.saved")} — ${effectiveScope === "global" ? t("effect.global") : effectiveScope === "custom" ? body.path : t("effect.workspace")}` });
+					})
+					.catch((cause) => setStatus({ kind: "error", text: `${t("error.generic")}: ${cause instanceof Error ? cause.message : String(cause)}` }))
+					.finally(() => setBusy(false));
 			};
 
 			const insertTemplate = (template) => {
@@ -292,7 +348,7 @@ window.__ModuleLoader__.load({
 										className: "rcx-titleRow",
 										children: [
 											(0, react_jsx_runtime.jsx)("span", { className: "rcx-title", children: t("panel.title") }),
-											(0, react_jsx_runtime.jsx)("span", { className: "rcx-path", children: filePath }),
+											(0, react_jsx_runtime.jsx)(PathField, { path: filePath, onPathChange: (p) => { setCustomPath(p); loadCustomFile(p); } }),
 											(0, react_jsx_runtime.jsx)("button", { type: "button", className: "rcx-closeBtn", "aria-label": t("action.close"), onClick: onClose, children: "\u00d7" })
 										]
 									}),
@@ -338,7 +394,7 @@ window.__ModuleLoader__.load({
 									(0, react_jsx_runtime.jsx)("span", { className: "rcx-empty", children: saved === null ? t("editor.empty") : null })
 								]
 							}),
-							(0, react_jsx_runtime.jsxs)("div", {
+							("div", {
 								className: "rcx-templates",
 								children: [
 									(0, react_jsx_runtime.jsxs)("div", {
@@ -371,7 +427,7 @@ window.__ModuleLoader__.load({
 									(0, react_jsx_runtime.jsx)("button", {
 										type: "button",
 										className: dirty ? "rcx-saveBtn rcx-saveDirty" : "rcx-saveBtn",
-										disabled: busy || !dirty || (tab === "workspace" && workspace === ""),
+										disabled: busy || !dirty || (tab === "workspace" && workspace === "" && customPath === null),
 										onClick: save,
 										children: busy ? t("action.saving") : t("action.save")
 									})
