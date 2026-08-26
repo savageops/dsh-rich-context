@@ -262,20 +262,66 @@ export function apply(ctx) {
           if (!guard(req, res)) return
           const home = homedir()
           const sources = []
-          // Scan known tool directories
+          const seen = new Set()
+          const addSource = (path, label, category) => {
+            if (seen.has(path)) return
+            seen.add(path)
+            const exists = existsSync(path)
+            sources.push({ path, label, category, file: path.split('/').pop(), exists, lines: exists ? readFileSync(path, 'utf8').split('\n').length : 0 })
+          }
+
+          // 1. Tool config directories (~/.dsh/, ~/.codex/, etc.)
           for (const { dir, label } of KNOWN_SOURCES) {
             for (const file of ['AGENTS.md', 'CLAUDE.md']) {
-              const path = join(home, dir, file)
-              const exists = existsSync(path)
-              sources.push({ path, label: `${label} (${file})`, tool: dir, file, exists, lines: exists ? readFileSync(path, 'utf8').split('\n').length : 0 })
+              addSource(join(home, dir, file), `${label} (${file})`, 'tool-config')
             }
           }
-          // Home root
+
+          // 2. Home root
           for (const file of ['AGENTS.md', 'CLAUDE.md']) {
-            const path = join(home, file)
-            const exists = existsSync(path)
-            sources.push({ path, label: `Home root (${file})`, tool: '', file, exists, lines: exists ? readFileSync(path, 'utf8').split('\n').length : 0 })
+            addSource(join(home, file), `Home root (${file})`, 'home')
           }
+
+          // 3. Workspace roots (from sessions dir slugs) — repo-level AGENTS.md
+          for (const slug of workspaceSlugs()) {
+            // Decode slug to path: strip -- delimiters, replace remaining -- with /
+            // Slugs use double-hyphen as path separator between the wrapping --
+            const decoded = slug.replaceAll('--', '/')
+            const root = decoded.startsWith('/') ? decoded : `/${decoded}`
+            for (const file of ['AGENTS.md', 'CLAUDE.md']) {
+              const p = join(root, file)
+              if (existsSync(p)) addSource(p, `${slug} (${file})`, 'workspace-root')
+            }
+            // 4. .refs/ subdirectories within each workspace
+            const refsDir = join(root, '.refs')
+            if (existsSync(refsDir)) {
+              try {
+                for (const entry of readdirSync(refsDir, { withFileTypes: true })) {
+                  if (!entry.isDirectory()) continue
+                  for (const file of ['AGENTS.md', 'CLAUDE.md']) {
+                    const p = join(refsDir, entry.name, file)
+                    if (existsSync(p)) addSource(p, `.refs/${entry.name} (${file})`, 'reference')
+                  }
+                  // Also check one level deeper (e.g. .refs/networking/netbird/)
+                  const subDir = join(refsDir, entry.name)
+                  try {
+                    for (const sub of readdirSync(subDir, { withFileTypes: true })) {
+                      if (!sub.isDirectory()) continue
+                      for (const file of ['AGENTS.md', 'CLAUDE.md']) {
+                        const p = join(subDir, sub.name, file)
+                        if (existsSync(p)) addSource(p, `.refs/${entry.name}/${sub.name} (${file})`, 'reference')
+                      }
+                    }
+                  } catch { /* not readable */ }
+                }
+              } catch { /* not readable */ }
+            }
+          }
+
+          // Sort: existing first, then by category (workspace-root > reference > tool-config > home)
+          const catOrder = { 'workspace-root': 0, 'reference': 1, 'tool-config': 2, 'home': 3 }
+          sources.sort((a, b) => (b.exists ? 1 : 0) - (a.exists ? 1 : 0) || (catOrder[a.category] ?? 9) - (catOrder[b.category] ?? 9) || a.label.localeCompare(b.label))
+
           // Check which is the current default (symlink target)
           let currentDefault = null
           try {
