@@ -1,7 +1,7 @@
 {
   "name": "dsh-rich-context",
   "version": "0.1.0",
-  "description": "Agent instruction manager for DeepSeek Harness: edit, refine, and template the AGENTS.md files the harness actually reads — the user-global ~/.dsh/AGENTS.md and per-workspace AGENTS.md — from a sidebar panel under the Skill Center.",
+  "description": "Agent instruction manager for DeepSeek Harness: edit, refine, and template the AGENTS.md files the harness actually reads \u2014 the user-global ~/.dsh/AGENTS.md and per-workspace AGENTS.md \u2014 from a sidebar panel under the Skill Center.",
   "keywords": [
     "deepseek-harness",
     "deepseek-harness-plugin",
@@ -51,6 +51,7 @@
     "client": {
       "platform": "web",
       "inject": [
+        "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-locale"
       ]
     }
