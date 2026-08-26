@@ -1,0 +1,11 @@
+# dsh-rich-context bundle patch: inserts the dual-face plugin row.
+#
+# Node half (exports "."): /api/rich-context/{state,file,template} routes —
+# read/write the AGENTS.md files the harness loads (user-global +
+# per-workspace) and manage section templates.
+#
+# Browser half (exports "./client"): a self-healing sidebar entry under the
+# Skill Center (task-board family pattern) opening the manager overlay.
+- insert:
+    - id: rich-context
+      name: dsh-rich-context
