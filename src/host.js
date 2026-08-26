@@ -202,6 +202,12 @@ export function apply(ctx) {
               writeJson(res, 200, { ok: true, path, content: readFileOrNull(path) })
               return
             }
+            if (scope === 'custom') {
+              const customPath = url.searchParams.get('path') ?? ''
+              if (customPath === '' || !customPath.startsWith('/') || customPath.includes('..')) { writeJson(res, 400, { ok: false, error: 'invalid-path' }); return }
+              writeJson(res, 200, { ok: true, path: customPath, content: readFileOrNull(customPath) })
+              return
+            }
             writeJson(res, 400, { ok: false, error: 'invalid-scope' })
             return
           }
