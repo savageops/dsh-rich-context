@@ -286,16 +286,19 @@ export function apply(ctx) {
             sources.push({ path, label, category, file: path.split('/').pop(), exists, lines: exists ? readFileSync(path, 'utf8').split('\n').length : 0 })
           }
 
-          // 1. Tool config directories (~/.dsh/, ~/.codex/, etc.)
-          for (const { dir, label } of KNOWN_SOURCES) {
-            for (const file of ['AGENTS.md', 'CLAUDE.md']) {
-              addSource(join(home, dir, file), `${label} (${file})`, 'tool-config')
+          // 1. Tool config directories — scan BOTH $HOME and /root (operators run as both)
+          const homeRoots = [home, '/root'].filter((root, index, arr) => arr.indexOf(root) === index)
+          for (const root of homeRoots) {
+            const rootLabel = root === home ? '' : ' (root)'
+            for (const { dir, label } of KNOWN_SOURCES) {
+              for (const file of ['AGENTS.md', 'CLAUDE.md']) {
+                addSource(join(root, dir, file), `${label}${rootLabel} (${file})`, 'tool-config')
+              }
             }
-          }
-
-          // 2. Home root
-          for (const file of ['AGENTS.md', 'CLAUDE.md']) {
-            addSource(join(home, file), `Home root (${file})`, 'home')
+            // 2. Home root AGENTS.md
+            for (const file of ['AGENTS.md', 'CLAUDE.md']) {
+              addSource(join(root, file), `Home root${rootLabel} (${file})`, 'home')
+            }
           }
 
           // 3. Direct filesystem scan — workspace roots + .refs/ reference repos.
