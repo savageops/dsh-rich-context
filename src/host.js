@@ -113,7 +113,8 @@ function workspaceSlugs() {
 
 /** Decode a sessions-dir slug back to a filesystem path. */
 function slugToPath(slug) {
-  return slug.replaceAll('--', '/')
+  const decoded = slug.replaceAll("--", "/")
+  return decoded.startsWith("/") ? decoded : `/${decoded}`
 }
 
 function readFileOrNull(path) {
