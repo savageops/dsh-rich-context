@@ -13,7 +13,7 @@
  *
  * Zero runtime dependencies: node builtins only.
  */
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, existsSync, lstatSync, symlinkSync, readlinkSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -24,6 +24,19 @@ const DSH_HOME = process.env.DSH_HOME ?? join(homedir(), '.dsh')
 const GLOBAL_FILE = join(DSH_HOME, 'AGENTS.md')
 const TEMPLATE_DIR = join(DSH_HOME, 'rich-context', 'templates')
 const SESSIONS_DIR = join(DSH_HOME, 'sessions')
+/** Known tool directories that use AGENTS.md — scanned on demand. */
+const KNOWN_SOURCES = [
+  { dir: '.dsh', label: 'DSH Harness' },
+  { dir: '.codex', label: 'Codex CLI' },
+  { dir: '.claude', label: 'Claude Code' },
+  { dir: '.omp', label: 'OMP' },
+  { dir: '.pi', label: 'Pi' },
+  { dir: '.cursor', label: 'Cursor' },
+  { dir: '.aider', label: 'Aider' },
+  { dir: '.gemini', label: 'Gemini' },
+  { dir: '.copilot', label: 'Copilot' },
+  { dir: '.continue', label: 'Continue' },
+]
 
 export const name = 'dsh-rich-context'
 export const inject = ['tools', 'webServer', 'agents', 'systemPrompt']
@@ -236,6 +249,74 @@ export function apply(ctx) {
             mkdirSync(dirname(path), { recursive: true })
             writeFileSync(path, body.content, 'utf8')
             writeJson(res, 200, { ok: true, path })
+          } catch (error) {
+            writeJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      },
+      {
+        kind: 'exact',
+        path: `${API_PREFIX}/sources`,
+        handler: (req, res) => {
+          if (req.method !== 'GET') { writeJson(res, 405, { ok: false, error: 'method-not-allowed' }); return }
+          if (!guard(req, res)) return
+          const home = homedir()
+          const sources = []
+          // Scan known tool directories
+          for (const { dir, label } of KNOWN_SOURCES) {
+            for (const file of ['AGENTS.md', 'CLAUDE.md']) {
+              const path = join(home, dir, file)
+              const exists = existsSync(path)
+              sources.push({ path, label: `${label} (${file})`, tool: dir, file, exists, lines: exists ? readFileSync(path, 'utf8').split('\n').length : 0 })
+            }
+          }
+          // Home root
+          for (const file of ['AGENTS.md', 'CLAUDE.md']) {
+            const path = join(home, file)
+            const exists = existsSync(path)
+            sources.push({ path, label: `Home root (${file})`, tool: '', file, exists, lines: exists ? readFileSync(path, 'utf8').split('\n').length : 0 })
+          }
+          // Check which is the current default (symlink target)
+          let currentDefault = null
+          try {
+            const stats = lstatSync(GLOBAL_FILE)
+            if (stats.isSymbolicLink()) currentDefault = readlinkSync(GLOBAL_FILE)
+          } catch { /* not a symlink or doesn't exist */ }
+          writeJson(res, 200, { ok: true, sources, currentDefault, globalPath: GLOBAL_FILE })
+        },
+      },
+      {
+        kind: 'exact',
+        path: `${API_PREFIX}/default`,
+        handler: async (req, res) => {
+          if (req.method !== 'POST') { writeJson(res, 405, { ok: false, error: 'method-not-allowed' }); return }
+          if (!guard(req, res)) return
+          if (!(req.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) { writeJson(res, 415, { ok: false, error: 'json-required' }); return }
+          let body
+          try { body = await readJsonBody(req, 10_000) } catch (error) {
+            writeJson(res, 400, { ok: false, error: error?.message ?? 'bad-request' })
+            return
+          }
+          if (typeof body !== 'object' || body === null || typeof body.target !== 'string') {
+            writeJson(res, 400, { ok: false, error: 'target-required' })
+            return
+          }
+          const target = body.target
+          if (!target.startsWith('/') || target.includes('..')) { writeJson(res, 400, { ok: false, error: 'invalid-target' }); return }
+          try {
+            // If reset=true, remove symlink and create a plain file
+            if (body.reset === true) {
+              if (lstatSync(GLOBAL_FILE).isSymbolicLink?.()) unlinkSync(GLOBAL_FILE)
+              if (!existsSync(GLOBAL_FILE)) writeFileSync(GLOBAL_FILE, '', 'utf8')
+              writeJson(res, 200, { ok: true, default: null, message: 'Reset to plain file' })
+              return
+            }
+            // Create/replace the symlink: ~/.dsh/AGENTS.md -> target
+            if (existsSync(GLOBAL_FILE) || lstatSync(GLOBAL_FILE).isSymbolicLink?.()) {
+              try { unlinkSync(GLOBAL_FILE) } catch { /* may not exist */ }
+            }
+            symlinkSync(target, GLOBAL_FILE)
+            writeJson(res, 200, { ok: true, default: target, message: `Symlinked ${GLOBAL_FILE} -> ${target}` })
           } catch (error) {
             writeJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
           }

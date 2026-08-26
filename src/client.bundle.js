@@ -24,6 +24,13 @@ window.__ModuleLoader__.load({
 			"effect.global": "Applies to new sessions immediately.",
 			"effect.workspace": "Workspace sessions pick this up through file-activity sync.",
 			"effect.custom": "Custom path — the harness reads this if configured.",
+			"sources.title": "AGENTS.md sources",
+			"sources.hint": "All detected instruction files across tool directories",
+			"sources.set_default": "Set as default",
+			"sources.current": "current default (symlink)",
+			"sources.reset": "Reset to plain file",
+			"sources.not_found": "not found",
+			"sources.lines": "lines",
 		};
 		const zh = {
 			"entry.label": "上下文",
@@ -44,6 +51,13 @@ window.__ModuleLoader__.load({
 			"effect.global": "对新会话立即生效。",
 			"effect.workspace": "工作区会话通过文件活动同步感知变更。",
 			"effect.custom": "自定义路径——如已配置则 harness 会读取。",
+			"sources.title": "AGENTS.md 来源",
+			"sources.hint": "工具目录中检测到的所有指令文件",
+			"sources.set_default": "设为默认",
+			"sources.current": "当前默认（符号链接）",
+			"sources.reset": "重置为普通文件",
+			"sources.not_found": "未找到",
+			"sources.lines": "行",
 		};
 		const lang = (typeof navigator !== "undefined" && /^(zh)/i.test(navigator.language ?? "")) ? "zh" : "en";
 		const dict = { en, zh };
@@ -76,6 +90,19 @@ window.__ModuleLoader__.load({
 .rcx-editor{flex:1;min-height:300px;height:100%;width:100%;resize:none;border:none;outline:none;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:ui-monospace,monospace;font-size:12.5px;line-height:19px;padding:10px 16px;scrollbar-width:none}
 .rcx-editor::-webkit-scrollbar{display:none}
 .rcx-empty{padding:2px 16px;color:var(--dsw-alias-label-caption);font-size:11px;line-height:14px}
+.rcx-sources{border-top:1px solid var(--dsw-alias-border-l1);padding:8px 16px}
+.rcx-sourcesHead{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+.rcx-sourcesTitle{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:14px;text-transform:uppercase;letter-spacing:.05em}
+.rcx-sourcesHint{flex:1;color:var(--dsw-alias-label-caption);font-size:11px;line-height:14px}
+.rcx-sourceList{display:flex;flex-direction:column;gap:2px;max-height:120px;overflow-y:auto;scrollbar-width:none}
+.rcx-sourceList::-webkit-scrollbar{display:none}
+.rcx-sourceRow{display:flex;align-items:center;gap:8px;padding:3px 8px;border-radius:6px;cursor:pointer}
+.rcx-sourceRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.rcx-sourceOn{background:color-mix(in srgb, var(--dsw-alias-state-business-primary) 8%, transparent)}
+.rcx-sourceLabel{flex:1;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcx-sourceMeta{color:var(--dsw-alias-label-caption);font-size:11px;line-height:14px;flex:none}
+.rcx-sourceBtn{flex:none;background:0 0;border:1px solid var(--dsw-alias-border-l2);border-radius:4px;padding:1px 8px;font:inherit;font-size:11px;line-height:14px;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.rcx-sourceBtn:hover{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary)}
 .rcx-footer{display:flex;align-items:stretch;border-top:1px solid var(--dsw-alias-border-l1)}
 .rcx-status{flex:1;align-self:center;min-width:0;padding:0 12px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rcx-statusErr{color:var(--dsw-alias-state-error-primary)}
@@ -304,12 +331,88 @@ window.__ModuleLoader__.load({
 				tabWorkspace.className = next === "workspace" ? "rcx-tab rcx-tabOn" : "rcx-tab";
 				tabHintEl.textContent = next === "global" ? t("tab.global.hint") : t("tab.workspace.hint");
 				pickerEl.style.display = next === "workspace" ? "" : "none";
+				sourcesEl.style.display = next === "global" ? "" : "none";
 				loadFile();
 			};
 			tabGlobal.addEventListener("click", () => setTab("global"));
 			tabWorkspace.addEventListener("click", () => setTab("workspace"));
 			tabs.append(tabGlobal, tabWorkspace, tabHintEl);
 			card.append(tabs);
+
+			// Sources section (Global tab only) — scan + switch AGENTS.md default
+			const sourcesEl = document.createElement("div");
+			sourcesEl.className = "rcx-sources";
+			sourcesEl.style.display = "none"; // hidden by default, shown on Global tab
+			const sourcesHead = document.createElement("div");
+			sourcesHead.className = "rcx-sourcesHead";
+			const sourcesTitle = document.createElement("span");
+			sourcesTitle.className = "rcx-sourcesTitle";
+			sourcesTitle.textContent = t("sources.title");
+			const sourcesHint = document.createElement("span");
+			sourcesHint.className = "rcx-sourcesHint";
+			sourcesHint.textContent = t("sources.hint");
+			sourcesHead.append(sourcesTitle, sourcesHint);
+			const sourceList = document.createElement("div");
+			sourceList.className = "rcx-sourceList";
+			sourcesEl.append(sourcesHead, sourceList);
+			card.append(sourcesEl);
+
+			const loadSources = () => {
+				fetch(`${API}/sources`).then((res) => res.json()).then((body) => {
+					if (body.ok !== true) return;
+					sourceList.innerHTML = "";
+					for (const source of body.sources) {
+						if (!source.exists) continue;
+						const row = document.createElement("div");
+						row.className = body.currentDefault === source.path ? "rcx-sourceRow rcx-sourceOn" : "rcx-sourceRow";
+						row.title = source.path;
+						const label = document.createElement("span");
+						label.className = "rcx-sourceLabel";
+						label.textContent = source.label;
+						const meta = document.createElement("span");
+						meta.className = "rcx-sourceMeta";
+						meta.textContent = `${source.lines} ${t("sources.lines")}`;
+						row.append(label, meta);
+						if (body.currentDefault === source.path) {
+							const badge = document.createElement("span");
+							badge.className = "rcx-sourceMeta";
+							badge.style.color = "var(--dsw-alias-state-business-primary)";
+							badge.textContent = "\u2713 " + t("sources.current");
+							row.append(badge);
+						} else if (!source.path.includes("/.dsh/")) {
+							const btn = document.createElement("button");
+							btn.type = "button";
+							btn.className = "rcx-sourceBtn";
+							btn.textContent = t("sources.set_default");
+							btn.addEventListener("click", (event) => {
+								event.stopPropagation();
+								fetch(`${API}/default`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: source.path }) })
+									.then((res) => res.json())
+									.then(() => { loadSources(); loadFile(); });
+							});
+							row.append(btn);
+						}
+						sourceList.append(row);
+					}
+					// Reset button if a symlink is active
+					if (body.currentDefault !== null) {
+						const resetRow = document.createElement("div");
+						resetRow.className = "rcx-sourceRow";
+						const resetBtn = document.createElement("button");
+						resetBtn.type = "button";
+						resetBtn.className = "rcx-sourceBtn";
+						resetBtn.textContent = t("sources.reset");
+						resetBtn.addEventListener("click", () => {
+							fetch(`${API}/default`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: "", reset: true }) })
+								.then((res) => res.json())
+								.then(() => { loadSources(); loadFile(); });
+						});
+						resetRow.append(resetBtn);
+						sourceList.append(resetRow);
+					}
+				}).catch(() => {});
+			};
+			loadSources();
 
 			// Workspace picker
 			pickerEl = document.createElement("div");
