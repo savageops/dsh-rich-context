@@ -188,11 +188,28 @@ export function apply(ctx) {
         handler: (req, res) => {
           if (req.method !== 'GET') { writeJson(res, 405, { ok: false, error: 'method-not-allowed' }); return }
           if (!guard(req, res)) return
+          // Workspaces as real filesystem paths — scan known parent dirs for repos
+          const wsRoots = []
+          const scanDirs = ['/home/github', '/home/sysadmin', '/tmp']
+          for (const scanDir of scanDirs) {
+            if (!existsSync(scanDir)) continue
+            try {
+              for (const entry of readdirSync(scanDir, { withFileTypes: true })) {
+                if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue
+                const repoDir = join(scanDir, entry.name)
+                // Include if it has AGENTS.md, CLAUDE.md, or is a git repo
+                if (existsSync(join(repoDir, 'AGENTS.md')) || existsSync(join(repoDir, 'CLAUDE.md')) || existsSync(join(repoDir, '.git'))) {
+                  wsRoots.push(repoDir)
+                }
+              }
+            } catch { /* not readable */ }
+          }
+          wsRoots.sort()
           writeJson(res, 200, {
             ok: true,
             globalPath: GLOBAL_FILE,
             globalContent: readFileOrNull(GLOBAL_FILE),
-            workspaces: workspaceSlugs(),
+            workspaces: wsRoots,
             templates: [...BUILTIN_TEMPLATES, ...userTemplates()],
           })
         },
@@ -208,10 +225,9 @@ export function apply(ctx) {
             const scope = url.searchParams.get('scope')
             if (scope === 'global') { writeJson(res, 200, { ok: true, path: GLOBAL_FILE, content: readFileOrNull(GLOBAL_FILE) }); return }
             if (scope === 'workspace') {
-              const slug = url.searchParams.get('workspace') ?? ''
-              const root = slugToPath(slug)
-              if (root === '' || root.includes('..')) { writeJson(res, 400, { ok: false, error: 'invalid-workspace' }); return }
-              const path = join(root, 'AGENTS.md')
+              const wsPath = url.searchParams.get('workspace') ?? ''
+              if (wsPath === '' || !wsPath.startsWith('/') || wsPath.includes('..')) { writeJson(res, 400, { ok: false, error: 'invalid-workspace' }); return }
+              const path = join(wsPath, 'AGENTS.md')
               writeJson(res, 200, { ok: true, path, content: readFileOrNull(path) })
               return
             }
@@ -241,9 +257,9 @@ export function apply(ctx) {
           }
           else if (body.scope === 'global') path = GLOBAL_FILE
           else {
-            const root = slugToPath(typeof body.workspace === 'string' ? body.workspace : '')
-            if (root === '' || root.includes('..')) { writeJson(res, 400, { ok: false, error: 'invalid-workspace' }); return }
-            path = join(root, 'AGENTS.md')
+            const wsPath = typeof body.workspace === 'string' ? body.workspace : ''
+            if (wsPath === '' || !wsPath.startsWith('/') || wsPath.includes('..')) { writeJson(res, 400, { ok: false, error: 'invalid-workspace' }); return }
+            path = join(wsPath, 'AGENTS.md')
           }
           try {
             mkdirSync(dirname(path), { recursive: true })
@@ -330,9 +346,11 @@ export function apply(ctx) {
             } catch { /* not readable */ }
           }
 
-          // Sort: existing first, then by category (workspace-root > reference > tool-config > home)
-          const catOrder = { 'workspace-root': 0, 'reference': 1, 'tool-config': 2, 'home': 3 }
-          sources.sort((a, b) => (b.exists ? 1 : 0) - (a.exists ? 1 : 0) || (catOrder[a.category] ?? 9) - (catOrder[b.category] ?? 9) || a.label.localeCompare(b.label))
+          // Global tab sources: tool-config and home only (workspace files belong to the workspace tab)
+          const globalOnly = sources.filter((s) => s.category === 'tool-config' || s.category === 'home')
+          globalOnly.sort((a, b) => (b.exists ? 1 : 0) - (a.exists ? 1 : 0) || a.label.localeCompare(b.label))
+          sources.length = 0
+          sources.push(...globalOnly)
 
           // Check which is the current default (symlink target)
           let currentDefault = null

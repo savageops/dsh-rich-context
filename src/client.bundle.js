@@ -239,7 +239,7 @@ window.__ModuleLoader__.load({
 				else if (dirty && statusEl.textContent === "") statusEl.textContent = t("action.dirty");
 			};
 			const updatePath = () => {
-				const p = customPath !== null ? customPath : tab === "global" ? (state?.globalPath ?? "~/.dsh/AGENTS.md") : workspace !== "" ? `/${workspace.replaceAll("--", "/")}/AGENTS.md` : "";
+				const p = customPath !== null ? customPath : tab === "global" ? (state?.globalPath ?? "~/.dsh/AGENTS.md") : workspace !== "" ? `${workspace}/AGENTS.md` : "";
 				pathEl.textContent = p;
 			};
 			const loadFile = () => {
