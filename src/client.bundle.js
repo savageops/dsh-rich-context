@@ -72,8 +72,8 @@ window.__ModuleLoader__.load({
 .rcx-tabHint{flex:1;align-self:center;padding:0 12px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rcx-picker{padding:8px 16px 0}
 .rcx-select{width:100%;height:30px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);border-radius:8px;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;padding:0 8px}
-.rcx-editorWrap{flex:1;min-height:0;display:flex;flex-direction:column;padding:8px 0 0}
-.rcx-editor{flex:1;min-height:0;width:100%;resize:none;border:none;outline:none;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:ui-monospace,monospace;font-size:12.5px;line-height:19px;padding:10px 16px;scrollbar-width:none}
+.rcx-editorWrap{flex:1;min-height:0;display:flex;flex-direction:column;padding:8px 0 0;overflow:hidden}
+.rcx-editor{flex:1;min-height:120px;height:100%;width:100%;resize:none;border:none;outline:none;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:ui-monospace,monospace;font-size:12.5px;line-height:19px;padding:10px 16px;scrollbar-width:none}
 .rcx-editor::-webkit-scrollbar{display:none}
 .rcx-empty{padding:2px 16px;color:var(--dsw-alias-label-caption);font-size:11px;line-height:14px}
 .rcx-footer{display:flex;align-items:stretch;border-top:1px solid var(--dsw-alias-border-l1)}
@@ -260,9 +260,12 @@ window.__ModuleLoader__.load({
 					const trimmed = input.value.trim();
 					if (trimmed.startsWith("/") && trimmed !== pathEl.textContent) {
 						customPath = trimmed;
+					} else if (!trimmed.startsWith("/")) {
+						customPath = null;
 					}
 					input.replaceWith(pathEl);
-					if (customPath !== null) loadFile(); else updatePath();
+					updatePath();
+					if (customPath !== null) loadFile();
 				};
 				input.addEventListener("blur", commit);
 				input.addEventListener("keydown", (event) => {
