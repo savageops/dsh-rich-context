@@ -7,13 +7,38 @@
  *  - PUT  /api/rich-context/template         (create/update a user template)
  *  - DELETE /api/rich-context/template       (remove a user template)
  *
+ * Plus the subagent-persona service ("Agents" tab, v0.2):
+ *  - GET    /api/rich-context/agents         (persona roster, route validation state)
+ *  - GET    /api/rich-context/agents/file    (one persona TOML, parsed + raw)
+ *  - PUT    /api/rich-context/agents/file    (validate + write TOML + compile preset)
+ *  - DELETE /api/rich-context/agents/file    (remove TOML + managed preset)
+ *  - GET    /api/rich-context/agents/catalog (providers → models → efforts)
+ *  - GET    /api/rich-context/agents/import  (foreign agent files, converted preview)
+ *  - POST   /api/rich-context/agents/import  (copy + convert selected foreign files)
+ *  - POST   /api/rich-context/agents/launch  (spawn a session running a persona)
+ *
+ * Persona model (research-locked 2026-08-26, operator survey):
+ *  - One Codex-style TOML per agent in <DSH_HOME>/agents/<id>.toml:
+ *    name, description, provider, model, effort, sandbox_mode,
+ *    developer_instructions (the persona / system prompt).
+ *  - Every agent carries the full DSH route triple {provider, model,
+ *    reasoningEffort} — saved values are validated against the live model
+ *    catalog (the same source the GUI model picker uses).
+ *  - Each persona compiles to a DSH agent preset at
+ *    <DSH_HOME>/.agent-presets/<id>/ (standard composition with the persona
+ *    row replaced) so sessions can be composed from it; the preset directory
+ *    carries a marker file so the plugin only ever manages its own.
+ *  - Launch creates a real standard session with the full route triple via the
+ *    seed request/header mechanism + preset mount (the path memory-evolve's
+ *    spawner uses), then dispatches the prompt as the first user message.
+ *
  * The files managed are exactly what dsh-agent-instructions loads:
  *  - user-global: <DSH_HOME>/AGENTS.md          (injected into every session)
  *  - workspace:   <workspace-root>/AGENTS.md    (per-project, cwd-discovered)
  *
  * Zero runtime dependencies: node builtins only.
  */
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, existsSync, lstatSync, symlinkSync, readlinkSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, existsSync, lstatSync, symlinkSync, readlinkSync, rmSync, realpathSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -24,6 +49,34 @@ const DSH_HOME = process.env.DSH_HOME ?? join(homedir(), '.dsh')
 const GLOBAL_FILE = join(DSH_HOME, 'AGENTS.md')
 const TEMPLATE_DIR = join(DSH_HOME, 'rich-context', 'templates')
 const SESSIONS_DIR = join(DSH_HOME, 'sessions')
+
+// ── Subagent personas ────────────────────────────────────────────────────────
+/** Persona TOML directory (one file per agent). */
+const AGENTS_DIR = join(DSH_HOME, 'agents')
+/** DSH user preset root — where compiled persona presets live. */
+const PRESET_ROOT = join(DSH_HOME, '.agent-presets')
+/** Preset id rule, copied from @deepseek-ai/dsh-agent-presets PRESET_ID. */
+const PRESET_ID_RE = /^[a-z0-9][a-z0-9-]*$/
+/** Marker file naming a preset directory as managed by this plugin. */
+const PRESET_MARKER = '.dsh-agents.json'
+/** Shipped preset roots (first existing wins as the composition template source). */
+const SHIPPED_PRESET_ROOTS = [
+  join(DSH_HOME, 'source/current/apps/cli/config/agent-presets'),
+  '/opt/cli-dsh-web/node_modules/@deepseek-ai/dsh/config/agent-presets',
+]
+/** Foreign agent-file directories offered by the importer. */
+const IMPORT_DIRS = [
+  { dir: join(homedir(), '.codex', 'agents'), format: 'toml', label: 'Codex' },
+  { dir: '/root/.codex/agents', format: 'toml', label: 'Codex (root)' },
+  { dir: join(homedir(), '.claude', 'agents'), format: 'md', label: 'Claude Code' },
+  { dir: '/root/.claude/agents', format: 'md', label: 'Claude Code (root)' },
+  { dir: join(homedir(), '.gemini', 'agents'), format: 'md', label: 'Gemini CLI' },
+  { dir: '/root/.gemini/agents', format: 'md', label: 'Gemini CLI (root)' },
+]
+/** All effort spellings seen across the 11 researched CLIs, normalized to `effort`. */
+const EFFORT_KEYS = ['effort', 'model_reasoning_effort', 'reasoningEffort', 'thoughtLevel']
+/** Codex `ultra` has no DSH counterpart on any configured adapter; map to the nearest. */
+const EFFORT_ALIASES = { ultra: 'max' }
 /** Known tool directories that use AGENTS.md — scanned on demand. */
 const KNOWN_SOURCES = [
   { dir: '.dsh', label: 'DSH Harness' },
@@ -178,6 +231,604 @@ function guard(req, res) {
   if (!loopback || !browser) writeJson(res, 403, { ok: false, error: 'forbidden' })
   return loopback && browser
 }
+
+// ── Subagent personas: TOML subset ───────────────────────────────────────────
+/**
+ * Parse the persona TOML subset: root-level `key = value` pairs with basic
+ * strings, multiline basic strings ("""..."""), literal strings ('...'), bare
+ * scalars (true/false/numbers). Keys under [tables] are tracked but not
+ * returned (Codex files carry [mcp_servers.*] config layers we deliberately
+ * do not own). Lenient by design: every competitor skips-and-diagnoses rather
+ * than crashes on files it cannot fully understand.
+ */
+function parseToml(text) {
+  const root = {}
+  const lines = String(text ?? '').split('\n')
+  let table = ''
+  let i = 0
+  while (i < lines.length) {
+    const raw = lines[i]
+    const line = raw.trim()
+    i += 1
+    if (line === '' || line.startsWith('#')) continue
+    if (line.startsWith('[') && line.endsWith(']')) { table = line.slice(1, -1).trim(); continue }
+    const eq = line.indexOf('=')
+    if (eq <= 0) continue
+    const key = line.slice(0, eq).trim().replace(/^["']|["']$/g, '')
+    let rest = line.slice(eq + 1).trim()
+    if (rest.startsWith('"""')) {
+      // Multiline basic string — may close on this line or many lines later.
+      let inner = rest.slice(3)
+      const closeAt = inner.indexOf('"""')
+      if (closeAt >= 0) {
+        if (table === '') root[key] = decodeTomlString(inner.slice(0, closeAt))
+        continue
+      }
+      const parts = [inner.replace(/^\r?\n/, '')]
+      let closed = false
+      while (i < lines.length && !closed) {
+        const next = lines[i]
+        i += 1
+        const at = next.indexOf('"""')
+        if (at >= 0) { parts.push(next.slice(0, at)); closed = true }
+        else parts.push(next)
+      }
+      if (table === '') root[key] = decodeTomlString(parts.join('\n')).replace(/^\n/, '').replace(/\n$/, '')
+      continue
+    }
+    if (rest.startsWith('"')) {
+      // Single-line basic string — first to last quote on the line.
+      const last = rest.lastIndexOf('"')
+      if (last > 0 && table === '') root[key] = decodeTomlString(rest.slice(1, last))
+      continue
+    }
+    if (rest.startsWith("'")) {
+      const end = rest.indexOf("'", 1)
+      if (end > 0 && table === '') root[key] = rest.slice(1, end)
+      continue
+    }
+    // Bare scalar — strip trailing comment; keys inside [tables] are skipped
+    // (Codex config layers like [mcp_servers.*] are not ours to own).
+    if (table !== '') continue
+    const hash = rest.indexOf('#')
+    root[key] = (hash >= 0 ? rest.slice(0, hash) : rest).trim()
+  }
+  return root
+}
+
+/** Decode TOML basic-string escapes. */
+function decodeTomlString(text) {
+  return String(text)
+    .replace(/\\(["\\])/g, '$1')
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '\t')
+    .replace(/\\r/g, '\r')
+}
+
+/** Escape a value for a TOML single-line basic string. */
+function encodeTomlBasic(value) {
+  return `"${String(value ?? '').replace(/[\\]/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]+/g, ' ')}"`
+}
+
+/** Serialize the persona TOML in canonical field order. */
+function serializeToml(agent, provenance) {
+  const head = provenance ? `# imported-from: ${provenance}\n` : ''
+  const body = String(agent.prompt ?? '')
+    .replace(/[\\]/g, '\\\\')
+    .replace(/"""/g, '\\"\\"\\"')
+  return `${head}name = ${encodeTomlBasic(agent.name ?? agent.id)}
+description = ${encodeTomlBasic(agent.description ?? '')}
+provider = ${encodeTomlBasic(agent.provider ?? '')}
+model = ${encodeTomlBasic(agent.model ?? '')}
+effort = ${encodeTomlBasic(agent.effort ?? 'default')}
+sandbox_mode = ${encodeTomlBasic(agent.sandbox ?? 'read-only')}
+developer_instructions = """
+${body}
+"""
+`
+}
+
+/** Parse a Claude/Gemini-style agent markdown file: frontmatter + body prompt. */
+function parseMdAgent(text) {
+  const lines = String(text ?? '').split('\n')
+  if (lines[0]?.trim() !== '---') return null
+  const end = lines.findIndex((line, index) => index > 0 && line.trim() === '---')
+  if (end <= 0) return null
+  const meta = {}
+  for (const line of lines.slice(1, end)) {
+    const match = /^([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$/.exec(line)
+    if (match === null) continue
+    let value = match[2].trim()
+    if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) value = value.slice(1, -1)
+    meta[match[1]] = value
+  }
+  const prompt = lines.slice(end + 1).join('\n').trim()
+  const effortKey = EFFORT_KEYS.find((key) => meta[key] !== undefined && meta[key] !== '')
+  let model = String(meta.model ?? '').trim()
+  // Cursor inline route params: model[effort=high,...]
+  let inlineEffort
+  const bracket = /\[([^\]]*)\]\s*$/.exec(model)
+  if (bracket !== null) {
+    model = model.slice(0, bracket.index).trim()
+    const effort = /effort=([a-z]+)/i.exec(bracket[1])
+    if (effort !== null) inlineEffort = effort[1]
+  }
+  // OpenCode/Amp vendor-prefixed model ids: provider/model-id
+  let provider = String(meta.provider ?? '').trim()
+  if (provider === '' && model.includes('/')) {
+    const slash = model.indexOf('/')
+    provider = model.slice(0, slash)
+    model = model.slice(slash + 1)
+  }
+  return {
+    name: String(meta.name ?? '').trim(),
+    description: String(meta.description ?? '').trim(),
+    provider,
+    model,
+    effort: inlineEffort ?? (effortKey !== undefined ? meta[effortKey] : ''),
+    sandbox: String(meta.sandbox_mode ?? 'read-only'),
+    prompt,
+  }
+}
+
+/** Normalize the five effort spellings + aliases to one canonical value. */
+function normalizeEffort(raw) {
+  const value = String(raw ?? '').trim()
+  if (value === '') return 'default'
+  return EFFORT_ALIASES[value] ?? value
+}
+
+/** Turn a foreign file stem into a legal preset id. */
+function buildAgentId(stem) {
+  const id = String(stem ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-')
+  if (id === '') return 'agent'
+  return id
+}
+
+/** Read one persona TOML into the normalized agent shape. */
+function readAgentFile(file) {
+  const raw = readFileOrNull(file)
+  if (raw === null) return null
+  let parsed
+  try { parsed = parseToml(raw) } catch { return null }
+  const stem = file.split('/').pop().replace(/\.toml$/, '')
+  const effortKey = EFFORT_KEYS.find((key) => parsed[key] !== undefined && String(parsed[key]).trim() !== '')
+  return {
+    id: stem,
+    file,
+    name: String(parsed.name ?? stem).trim(),
+    description: String(parsed.description ?? '').trim(),
+    provider: String(parsed.provider ?? '').trim(),
+    model: String(parsed.model ?? '').trim(),
+    effort: normalizeEffort(effortKey !== undefined ? parsed[effortKey] : 'default'),
+    sandbox: String(parsed.sandbox_mode ?? 'read-only').trim(),
+    prompt: String(parsed.developer_instructions ?? parsed.prompt ?? '').trim(),
+  }
+}
+
+// ── Subagent personas: model catalog ─────────────────────────────────────────
+/** Catalog cache: providers → models → efforts, from the live llm/settings services. */
+let _catalogCache = { at: 0, value: null }
+
+function getPath(root, path) {
+  let node = root
+  for (const key of path) {
+    if (node === null || typeof node !== 'object') return undefined
+    node = node[key]
+  }
+  return node
+}
+
+async function buildCatalog(ctx) {
+  if (_catalogCache.value !== null && Date.now() - _catalogCache.at < 60_000) return _catalogCache.value
+  const providers = {}
+  const llm = typeof ctx?.get === 'function' ? ctx.get('llm') : undefined
+  const settings = typeof ctx?.get === 'function' ? ctx.get('settings') : undefined
+  if (llm !== undefined && typeof llm.listConfigurableProviders === 'function') {
+    const entries = llm.listConfigurableProviders() ?? []
+    await Promise.all(entries.map(async (entry) => {
+      const providerId = String(entry.provider ?? '')
+      if (providerId === '') return
+      let profile
+      try {
+        const value = settings.get(entry.settingsNs)
+        profile = Array.isArray(entry.settingsPath) && entry.settingsPath.length > 0 ? getPath(value, entry.settingsPath) : value
+      } catch { profile = undefined }
+      const rawModels = profile !== undefined && Array.isArray(profile.models)
+        ? profile.models
+        : profile?.[providerId]?.models !== undefined && Array.isArray(profile[providerId].models)
+          ? profile[providerId].models
+          : []
+      const models = {}
+      for (const rawModel of rawModels) {
+        const id = String(rawModel?.id ?? '')
+        if (id === '') continue
+        const efforts = new Set()
+        let defaultEffort
+        const staticMap = rawModel.reasoningEfforts
+        if (staticMap !== null && typeof staticMap === 'object') {
+          for (const key of Object.keys(staticMap)) efforts.add(key)
+        }
+        if (efforts.size === 0 && typeof llm.resolveModelInfo === 'function') {
+          try {
+            const info = await llm.resolveModelInfo(providerId, id)
+            for (const effort of info?.reasoning?.efforts ?? []) efforts.add(String(effort.id))
+            if (info?.reasoning?.defaultEffort !== undefined) defaultEffort = String(info.reasoning.defaultEffort)
+          } catch { /* no adapter metadata — model has no effort list */ }
+        }
+        models[id] = {
+          name: typeof rawModel?.name === 'string' && rawModel.name !== '' ? rawModel.name : id,
+          efforts: [...efforts],
+          defaultEffort,
+        }
+      }
+      providers[providerId] = {
+        label: typeof entry.displayName === 'string' && entry.displayName !== '' ? entry.displayName : providerId,
+        models,
+      }
+    }))
+  }
+  let defaultRoute = null
+  try {
+    const selection = typeof ctx?.get === 'function' ? ctx.get('agentDefaultModel')?.currentSelection?.() : undefined
+    if (selection?.provider !== undefined && selection?.model !== undefined) {
+      defaultRoute = { provider: selection.provider, model: selection.model, ...(selection.reasoningEffort !== undefined ? { effort: selection.reasoningEffort } : {}) }
+    }
+  } catch { /* default-model service absent */ }
+  const value = { providers, defaultRoute }
+  _catalogCache = { at: Date.now(), value }
+  return value
+}
+
+/** Validate a route triple against the catalog. `effort` may be 'default'. */
+function validateRoute(catalog, provider, model, effort) {
+  const providerEntry = catalog.providers[String(provider ?? '')]
+  if (providerEntry === undefined) return { ok: false, error: `unknown provider "${provider ?? ''}"` }
+  const modelEntry = providerEntry.models[String(model ?? '')]
+  if (modelEntry === undefined) return { ok: false, error: `model "${model ?? ''}" is not in provider "${provider}"` }
+  if (modelEntry.efforts.length === 0) {
+    if (effort !== 'default') return { ok: false, error: `model "${model}" supports no reasoning efforts — use "default"` }
+    return { ok: true }
+  }
+  if (effort === 'default') {
+    return { ok: false, error: `model "${model}" requires an explicit effort (one of: ${modelEntry.efforts.join(', ')})` }
+  }
+  if (!modelEntry.efforts.includes(effort)) {
+    return { ok: false, error: `effort "${effort}" is not supported by ${provider}/${model} (supported: ${modelEntry.efforts.join(', ')})` }
+  }
+  return { ok: true }
+}
+
+/** Find the provider that owns a model id, if any. */
+function resolveProviderForModel(catalog, model) {
+  for (const [provider, entry] of Object.entries(catalog.providers)) {
+    if (entry.models[String(model ?? '')] !== undefined) return provider
+  }
+  return ''
+}
+
+// ── Subagent personas: preset compiler ───────────────────────────────────────
+let _standardComposition = null
+
+/** Read the shipped `standard` composition once (persona splice template). */
+function standardComposition() {
+  if (_standardComposition !== null) return _standardComposition
+  for (const root of SHIPPED_PRESET_ROOTS) {
+    const text = readFileOrNull(join(root, 'standard', 'agent.cordis.yml'))
+    if (text !== null) {
+      _standardComposition = { text, source: join(root, 'standard') }
+      return _standardComposition
+    }
+  }
+  return null
+}
+
+/** Indent persona prose into a 6-space YAML block scalar under `text: >-`. */
+function personaRow(personaText) {
+  const lines = String(personaText ?? '').replace(/\r/g, '').split('\n')
+  const indented = lines.map((line) => (line.trim() === '' ? '' : `      ${line}`)).join('\n')
+  return `- id: persona\n  name: '@deepseek-ai/dsh-persona'\n  config:\n    text: >-\n${indented}\n`
+}
+
+/**
+ * Compile an agent.cordis.yml: the shipped standard composition with its
+ * persona row replaced by this agent's prompt. When the shipped file cannot
+ * be read, fall back to a minimal verified row set (bash/fs/search/skills/
+ * goals/ask/todo/web) and log once.
+ */
+function compileComposition(agent) {
+  const standard = standardComposition()
+  const row = personaRow(agent.prompt)
+  if (standard !== null) {
+    const text = standard.text
+    const start = text.indexOf('\n- id: persona\n')
+    if (start >= 0) {
+      const after = text.indexOf('\n- id: ', start + 1)
+      if (after > start) {
+        return `${text.slice(0, start + 1)}${row}${text.slice(after + 1)}`
+      }
+    }
+    console.warn('[dsh-rich-context] standard composition lacks a spliceable persona row; using minimal fallback')
+  }
+  return `# Compiled by dsh-rich-context (minimal fallback composition).\n${row}- id: agent-instructions\n  name: '@deepseek-ai/dsh-agent-instructions'\n  config:\n    maxBytes: 65536\n\n- id: tool-bash\n  name: '@deepseek-ai/dsh-tool-bash'\n\n- id: tool-fs\n  name: '@deepseek-ai/dsh-tool-fs'\n\n- id: tool-fs-search\n  name: '@deepseek-ai/dsh-tool-fs-search'\n  config:\n    sampleOverCapGlobResults: false\n\n- id: skill-filesystem\n  name: '@deepseek-ai/dsh-skill-filesystem'\n\n- id: tool-skill\n  name: '@deepseek-ai/dsh-tool-skill'\n\n- id: tool-goal\n  name: '@deepseek-ai/dsh-tool-goal'\n\n- id: tool-ask-user\n  name: '@deepseek-ai/dsh-tool-ask-user'\n\n- id: tool-todo\n  name: '@deepseek-ai/dsh-tool-todo'\n\n- id: tool-web\n  name: '@deepseek-ai/dsh-tool-web'\n`
+}
+
+function markerPath(id) { return join(PRESET_ROOT, id, PRESET_MARKER) }
+
+function isManagedPreset(id) {
+  try { return existsSync(markerPath(id)) } catch { return false }
+}
+
+/** Write/refresh the compiled preset directory for one agent. */
+function writePreset(agent) {
+  const dir = join(PRESET_ROOT, agent.id)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'agent.cordis.yml'), compileComposition(agent), 'utf8')
+  const meta = [`name: ${JSON.stringify(agent.name || agent.id)}`, `description: ${JSON.stringify(agent.description || `Subagent persona ${agent.id}`)}`, 'order: 50'].join('\n')
+  writeFileSync(join(dir, 'preset.yml'), `${meta}\n`, 'utf8')
+  writeFileSync(join(dir, PRESET_MARKER), JSON.stringify({ managedBy: 'dsh-rich-context', sourceFile: agent.file ?? join(AGENTS_DIR, `${agent.id}.toml`), syncedAt: Date.now() }, null, 2), 'utf8')
+  return dir
+}
+
+/** Remove a managed preset directory. Refuses presets without our marker. */
+function removePreset(id) {
+  if (!PRESET_ID_RE.test(id)) return { ok: false, error: 'invalid-preset-id' }
+  if (!isManagedPreset(id)) return { ok: false, error: 'not-managed' }
+  rmSync(join(PRESET_ROOT, id), { recursive: true, force: true })
+  return { ok: true }
+}
+
+/** Ids this plugin must never write: shipped roster + foreign user presets. */
+function reservedIds() {
+  const ids = new Set(['standard', 'code', 'cordis', 'minimal'])
+  for (const root of SHIPPED_PRESET_ROOTS) {
+    try {
+      for (const entry of readdirSync(root, { withFileTypes: true })) {
+        if (entry.isDirectory() && PRESET_ID_RE.test(entry.name)) ids.add(entry.name)
+      }
+    } catch { /* root absent */ }
+  }
+  try {
+    for (const entry of readdirSync(PRESET_ROOT, { withFileTypes: true })) {
+      if (entry.isDirectory() && PRESET_ID_RE.test(entry.name) && !isManagedPreset(entry.name)) ids.add(entry.name)
+    }
+  } catch { /* root absent */ }
+  return ids
+}
+
+function listAgentFiles() {
+  try {
+    return readdirSync(AGENTS_DIR)
+      .filter((name) => name.endsWith('.toml'))
+      .map((name) => join(AGENTS_DIR, name))
+      .sort()
+  } catch { return [] }
+}
+
+/** Roster with live route validation against the catalog. */
+function listAgents(catalog) {
+  return listAgentFiles().map((file) => {
+    const agent = readAgentFile(file)
+    if (agent === null) return { id: file.split('/').pop().replace(/\.toml$/, ''), file, broken: true }
+    const route = agent.provider === '' || agent.model === ''
+      ? { ok: false, error: 'route incomplete — provider and model are required' }
+      : validateRoute(catalog, agent.provider, agent.model, agent.effort)
+    return { ...agent, routeOk: route.ok, routeError: route.ok ? null : route.error, presetDir: join(PRESET_ROOT, agent.id), presetSynced: isManagedPreset(agent.id) }
+  })
+}
+
+/** Import candidates from foreign agent directories (deduped by real path). */
+function importCandidates(catalog) {
+  const seen = new Set()
+  const existing = new Set(listAgentFiles().map((file) => file.split('/').pop().replace(/\.toml$/, '')))
+  const candidates = []
+  for (const source of IMPORT_DIRS) {
+    let files = []
+    try { files = readdirSync(source.dir).filter((name) => (source.format === 'toml' ? name.endsWith('.toml') : name.endsWith('.md'))) } catch { continue }
+    for (const name of files.sort()) {
+      const path = join(source.dir, name)
+      let real = path
+      try { real = realpathSync(path) } catch { /* keep path */ }
+      if (seen.has(real)) continue
+      seen.add(real)
+      const stem = name.replace(/\.(toml|md)$/, '')
+      const text = readFileOrNull(path)
+      if (text === null) continue
+      const parsed = source.format === 'toml' ? parseToml(text) : parseMdAgent(text)
+      if (parsed === null || String(parsed.developer_instructions ?? parsed.prompt ?? '').trim() === '') continue
+      const id = buildAgentId(stem)
+      let provider = String(parsed.provider ?? '').trim()
+      if (provider === '') provider = resolveProviderForModel(catalog, String(parsed.model ?? ''))
+      const effortKey = EFFORT_KEYS.find((key) => parsed[key] !== undefined && String(parsed[key]).trim() !== '')
+      candidates.push({
+        path,
+        real,
+        source: source.label,
+        format: source.format,
+        id,
+        exists: existing.has(id),
+        name: String(parsed.name ?? stem).trim() || id,
+        description: String(parsed.description ?? '').trim(),
+        provider,
+        model: String(parsed.model ?? '').trim(),
+        effort: normalizeEffort(effortKey !== undefined ? parsed[effortKey] : 'default'),
+        sandbox: String(parsed.sandbox_mode ?? 'read-only').trim(),
+        prompt: String(parsed.developer_instructions ?? parsed.prompt ?? '').trim(),
+      })
+    }
+  }
+  return candidates
+}
+
+// ── Subagent personas: launch (session spawn with the full route triple) ─────
+/** DSH session id format, matching the GUI. */
+function newAgentSessionId() { return `session-${randomUUID()}` }
+
+/** One user message, the same shape the composer sends. */
+function launchMessage(text) {
+  return { role: 'user', id: randomUUID(), content: [{ type: 'text', text: String(text) }], source: { kind: 'user' } }
+}
+
+const ATTACH_DELAYS = [0, 300, 1200, 4000]
+
+async function attachWorkspace(ctx, sessionId, cwd) {
+  const registry = typeof ctx?.get === 'function' ? ctx.get('workspaceRegistry') : undefined
+  if (registry === undefined) return { ok: false, error: 'workspace service unavailable', attempts: 0 }
+  let lastError = 'unknown error'
+  for (let attempt = 0; attempt < ATTACH_DELAYS.length; attempt += 1) {
+    if (attempt > 0 && ATTACH_DELAYS[attempt] > 0) await new Promise((resolve) => setTimeout(resolve, ATTACH_DELAYS[attempt]))
+    try {
+      let workspace = await registry.resolveByPath(cwd)
+      if (workspace === undefined) workspace = await registry.create(cwd)
+      await workspace.attachSession(sessionId)
+      return { ok: true, workspaceId: workspace.id, workspaceTitle: workspace.title, attempts: attempt + 1 }
+    } catch (error) {
+      const code = error?.code ?? error?.cause?.code
+      if (code === 'ENOENT' || code === 'ENOTDIR') return { ok: false, error: `cwd does not exist: ${cwd}`, attempts: attempt + 1, skipped: true }
+      lastError = error instanceof Error ? error.message : String(error)
+    }
+  }
+  return { ok: false, error: lastError, attempts: ATTACH_DELAYS.length }
+}
+
+/**
+ * Spawn a real session running one persona: seed request/header carries the
+ * full route triple (provider+model+reasoningEffort), the compiled preset is
+ * mounted through the agentPresets service, the workspace is attached, and
+ * the prompt is dispatched as the first user message.
+ */
+async function launchPersona(ctx, { agent, prompt, cwd }) {
+  const text = String(prompt ?? '').trim()
+  if (text === '') return { ok: false, error: 'prompt-required' }
+  const catalog = await buildCatalog(ctx)
+  const route = validateRoute(catalog, agent.provider, agent.model, agent.effort)
+  if (!route.ok) return { ok: false, error: `route invalid: ${route.error}` }
+  const workingDir = String(cwd ?? '').trim() !== '' ? String(cwd).trim() : join(homedir())
+  if (!workingDir.startsWith('/') || workingDir.includes('..')) return { ok: false, error: 'invalid-cwd' }
+
+  let presetSetup = null
+  try {
+    const presets = typeof ctx?.get === 'function' ? ctx.get('agentPresets') : undefined
+    if (presets !== undefined && typeof presets.resolve === 'function' && typeof presets.mount === 'function') {
+      const resolved = await presets.resolve(agent.id)
+      const presetId = String(resolved?.id ?? '').trim() || agent.id
+      presetSetup = {
+        id: presetId,
+        setup: async (agentCtx) => { await presets.mount(agentCtx, presetId) },
+      }
+    }
+  } catch (error) {
+    console.warn(`[dsh-rich-context] agentPresets resolve failed (launching without explicit mount): ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  const sessionId = newAgentSessionId()
+  const seed = [{
+    type: 'request/header',
+    seq: 0,
+    time: Date.now(),
+    data: {
+      header: {
+        config: {
+          provider: agent.provider,
+          model: agent.model,
+          ...(agent.effort !== 'default' ? { reasoningEffort: agent.effort } : {}),
+        },
+      },
+      reason: 'initial',
+    },
+  }]
+  let handle
+  try {
+    handle = await ctx.agents.create({
+      sessionId,
+      agentOptions: { provider: agent.provider, model: agent.model },
+      meta: { cwd: workingDir, ...(presetSetup !== null ? { agentPreset: presetSetup.id } : { agentPreset: agent.id }) },
+      ...(presetSetup !== null ? { setup: presetSetup.setup } : {}),
+      seed,
+    })
+  } catch (error) {
+    return { ok: false, error: `session create failed: ${error instanceof Error ? error.message : String(error)}` }
+  }
+  const attach = await attachWorkspace(ctx, sessionId, workingDir)
+  try {
+    handle.agent.followup(launchMessage(text))
+  } catch (error) {
+    return { ok: false, error: `dispatch failed: ${error instanceof Error ? error.message : String(error)}`, sessionId }
+  }
+  return {
+    ok: true,
+    sessionId,
+    provider: agent.provider,
+    model: agent.model,
+    effort: agent.effort,
+    agentPreset: presetSetup?.id ?? agent.id,
+    cwd: workingDir,
+    attach,
+  }
+}
+
+// ── Subagent personas: model-facing `agents` tool ────────────────────────────
+function agentsToolDefinition(ctx) {
+  return {
+    name: 'agents',
+    description: 'Named subagent personas with fixed routes (provider + model + effort) and their own system prompts, defined in ~/.dsh/agents/*.toml. Use for role-specialized delegation — an auditor, researcher, or implementer persona runs as its own standard session with exactly the route its file pins. Use the built-in `subagent` tool for anonymous one-off children whose result you need inline; agents.launch starts a sibling session (visible in the sidebar) that works independently and does NOT return its result to you. actions: list = roster with routes; read = one full definition including the persona prompt; launch = spawn a session running the persona (id + prompt required, cwd optional, defaults to this session\'s cwd).',
+    parameters: {
+      type: 'object',
+      required: ['action'],
+      properties: {
+        action: { type: 'string', enum: ['list', 'read', 'launch'], description: 'list = roster; read = one definition; launch = spawn a persona session.' },
+        id: { type: 'string', description: 'Agent id (see list). Required for read and launch.' },
+        prompt: { type: 'string', description: 'launch: the complete first message the new session executes — role, task, requirements, and reporting format in one text.' },
+        cwd: { type: 'string', description: 'launch optional: absolute working directory for the new session. Defaults to the calling session\'s cwd.' },
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          ok: { type: 'boolean' },
+          message: { type: 'string', description: 'Human-readable result or error.' },
+          agents: { type: 'array', items: { type: 'object' }, description: 'list: roster entries {id, name, description, provider, model, effort, routeOk}.' },
+          agent: { type: 'object', description: 'read: the full persona definition.' },
+          sessionId: { type: 'string', description: 'launch: the spawned session id.' },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+    },
+    async execute(args, exec) {
+      const action = String(args.action ?? 'list')
+      const catalog = await buildCatalog(ctx)
+      if (action === 'list') {
+        const agents = listAgents(catalog).map(({ id, name, description, provider, model, effort, routeOk, routeError, broken }) => ({ id, name, description, provider, model, effort, routeOk, ...(routeError !== null && routeError !== undefined ? { routeError } : {}), ...(broken === true ? { broken } : {}) }))
+        return { ok: true, agents, message: agents.length === 0 ? 'No personas defined — create them in the Agents panel (sidebar → Agents) or ~/.dsh/agents/*.toml.' : `${agents.length} persona(s).` }
+      }
+      const id = String(args.id ?? '').trim()
+      if (id === '') return { ok: false, message: 'id is required for read/launch.' }
+      const agent = listAgents(catalog).find((entry) => entry.id === id)
+      if (agent === undefined) return { ok: false, message: `agent "${id}" not found — use action:list for the roster.` }
+      if (action === 'read') {
+        const { routeOk, routeError, presetSynced, file, ...definition } = agent
+        return { ok: true, agent: definition, message: `Persona "${id}" (${agent.provider}/${agent.model}/${agent.effort}${presetSynced ? ', preset synced' : ''}).` }
+      }
+      if (action === 'launch') {
+        const requester = exec?.agent
+        const cwd = String(args.cwd ?? '').trim() !== '' ? String(args.cwd).trim() : requester?.session?.header?.cwd
+        const result = await launchPersona(ctx, { agent, prompt: args.prompt, cwd })
+        if (!result.ok) return { ok: false, message: result.error }
+        const attachNote = result.attach?.ok === true ? `attached to workspace "${result.attach.workspaceTitle ?? result.attach.workspaceId}".` : `workspace attach: ${result.attach?.error ?? 'skipped'} (session still runs).`
+        return { ok: true, sessionId: result.sessionId, message: `Launched "${id}" as ${result.sessionId} on ${result.provider}/${result.model}/${result.effort}; ${attachNote} It runs independently — its result lands in its own conversation, not here.` }
+      }
+      return { ok: false, message: `unknown action "${action}".` }
+    },
+  }
+}
+
+/** Test surface for the pure helpers (no service wiring). */
+export const __internals = { parseToml, serializeToml, parseMdAgent, normalizeEffort, buildAgentId, validateRoute, personaRow, compileComposition, readAgentFile }
 
 export function apply(ctx) {
   ctx.effect(() => {
@@ -435,9 +1086,176 @@ export function apply(ctx) {
           }
         },
       },
+      {
+        kind: 'exact',
+        path: `${API_PREFIX}/agents`,
+        handler: (req, res) => {
+          if (req.method !== 'GET') { writeJson(res, 405, { ok: false, error: 'method-not-allowed' }); return }
+          if (!guard(req, res)) return
+          buildCatalog(ctx).then((catalog) => {
+            writeJson(res, 200, { ok: true, dir: AGENTS_DIR, agents: listAgents(catalog) })
+          }).catch((error) => writeJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) }))
+        },
+      },
+      {
+        kind: 'exact',
+        path: `${API_PREFIX}/agents/file`,
+        handler: async (req, res) => {
+          if (req.method !== 'GET' && req.method !== 'PUT' && req.method !== 'DELETE') { writeJson(res, 405, { ok: false, error: 'method-not-allowed' }); return }
+          if (!guard(req, res)) return
+          const url = new URL(req.url ?? '/', 'http://localhost')
+          if (req.method === 'GET') {
+            const id = String(url.searchParams.get('id') ?? '')
+            if (!PRESET_ID_RE.test(id)) { writeJson(res, 400, { ok: false, error: 'invalid-id' }); return }
+            const file = join(AGENTS_DIR, `${id}.toml`)
+            const agent = readAgentFile(file)
+            if (agent === null) { writeJson(res, 404, { ok: false, error: 'not-found' }); return }
+            writeJson(res, 200, { ok: true, agent, raw: readFileOrNull(file) })
+            return
+          }
+          if (req.method === 'DELETE') {
+            const id = String(url.searchParams.get('id') ?? '')
+            if (!PRESET_ID_RE.test(id)) { writeJson(res, 400, { ok: false, error: 'invalid-id' }); return }
+            const file = join(AGENTS_DIR, `${id}.toml`)
+            const presetResult = removePreset(id)
+            try {
+              if (existsSync(file)) unlinkSync(file)
+              writeJson(res, 200, { ok: true, preset: presetResult })
+            } catch (error) {
+              writeJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+            }
+            return
+          }
+          // PUT — validate + write + compile preset.
+          if (!(req.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) { writeJson(res, 415, { ok: false, error: 'json-required' }); return }
+          let body
+          try { body = await readJsonBody(req, ACTION_LIMIT) } catch (error) {
+            writeJson(res, error?.message === 'body-too-large' ? 413 : 400, { ok: false, error: error?.message ?? 'bad-request' })
+            return
+          }
+          if (typeof body !== 'object' || body === null || typeof body.agent !== 'object' || body.agent === null) {
+            writeJson(res, 400, { ok: false, error: 'invalid-body' }); return
+          }
+          const agent = {
+            id: String(body.agent.id ?? '').trim(),
+            name: String(body.agent.name ?? '').trim(),
+            description: String(body.agent.description ?? '').trim(),
+            provider: String(body.agent.provider ?? '').trim(),
+            model: String(body.agent.model ?? '').trim(),
+            effort: normalizeEffort(body.agent.effort),
+            sandbox: String(body.agent.sandbox ?? 'read-only').trim(),
+            prompt: String(body.agent.prompt ?? '').trim(),
+          }
+          if (!PRESET_ID_RE.test(agent.id)) { writeJson(res, 400, { ok: false, error: 'invalid-id — must match [a-z0-9][a-z0-9-]*' }); return }
+          if (agent.name === '') agent.name = agent.id
+          if (agent.prompt === '') { writeJson(res, 400, { ok: false, error: 'prompt-required — developer_instructions cannot be empty' }); return }
+          const reserved = reservedIds()
+          const prevId = typeof body.prevId === 'string' && body.prevId !== '' ? body.prevId : null
+          if (reserved.has(agent.id) && agent.id !== prevId) { writeJson(res, 409, { ok: false, error: `id "${agent.id}" is reserved (shipped or foreign preset)` }); return }
+          if (body.strict !== false) {
+            const catalog = await buildCatalog(ctx)
+            const route = validateRoute(catalog, agent.provider, agent.model, agent.effort)
+            if (!route.ok) { writeJson(res, 400, { ok: false, error: `route invalid: ${route.error}` }); return }
+          }
+          try {
+            mkdirSync(AGENTS_DIR, { recursive: true })
+            agent.file = join(AGENTS_DIR, `${agent.id}.toml`)
+            writeFileSync(agent.file, serializeToml(agent, typeof body.provenance === 'string' ? body.provenance : ''), 'utf8')
+            if (prevId !== null && prevId !== agent.id) {
+              const prevFile = join(AGENTS_DIR, `${prevId}.toml`)
+              if (existsSync(prevFile)) unlinkSync(prevFile)
+              removePreset(prevId)
+            }
+            const presetDir = writePreset(agent)
+            writeJson(res, 200, { ok: true, file: agent.file, presetDir })
+          } catch (error) {
+            writeJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+          }
+        },
+      },
+      {
+        kind: 'exact',
+        path: `${API_PREFIX}/agents/catalog`,
+        handler: (req, res) => {
+          if (req.method !== 'GET') { writeJson(res, 405, { ok: false, error: 'method-not-allowed' }); return }
+          if (!guard(req, res)) return
+          buildCatalog(ctx).then((catalog) => {
+            const providers = Object.entries(catalog.providers)
+              .map(([id, entry]) => ({ id, label: entry.label, models: Object.entries(entry.models).map(([modelId, model]) => ({ id: modelId, name: model.name, efforts: model.efforts, defaultEffort: model.defaultEffort ?? null })) }))
+              .sort((a, b) => a.id.localeCompare(b.id))
+            writeJson(res, 200, { ok: true, providers, defaultRoute: catalog.defaultRoute })
+          }).catch((error) => writeJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) }))
+        },
+      },
+      {
+        kind: 'exact',
+        path: `${API_PREFIX}/agents/import`,
+        handler: async (req, res) => {
+          if (req.method !== 'GET' && req.method !== 'POST') { writeJson(res, 405, { ok: false, error: 'method-not-allowed' }); return }
+          if (!guard(req, res)) return
+          const catalog = await buildCatalog(ctx)
+          if (req.method === 'GET') {
+            writeJson(res, 200, { ok: true, candidates: importCandidates(catalog) })
+            return
+          }
+          if (!(req.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) { writeJson(res, 415, { ok: false, error: 'json-required' }); return }
+          let body
+          try { body = await readJsonBody(req, ACTION_LIMIT) } catch (error) {
+            writeJson(res, 400, { ok: false, error: error?.message ?? 'bad-request' })
+            return
+          }
+          const wanted = new Set(Array.isArray(body?.paths) ? body.paths.map(String) : [])
+          if (wanted.size === 0) { writeJson(res, 400, { ok: false, error: 'paths-required' }); return }
+          const candidates = importCandidates(catalog).filter((candidate) => wanted.has(candidate.path))
+          const imported = []
+          const skipped = []
+          const reserved = reservedIds()
+          for (const candidate of candidates) {
+            if (reserved.has(candidate.id) || (candidate.exists && body.overwrite !== true)) {
+              skipped.push({ id: candidate.id, path: candidate.path, reason: candidate.exists ? 'already exists' : 'reserved id' })
+              continue
+            }
+            const agent = { ...candidate, file: join(AGENTS_DIR, `${candidate.id}.toml`) }
+            try {
+              mkdirSync(AGENTS_DIR, { recursive: true })
+              writeFileSync(agent.file, serializeToml(agent, candidate.path), 'utf8')
+              writePreset(agent)
+              const route = agent.provider === '' || agent.model === ''
+                ? { ok: false, error: 'route incomplete — set provider and model' }
+                : validateRoute(catalog, agent.provider, agent.model, agent.effort)
+              imported.push({ id: agent.id, file: agent.file, routeOk: route.ok, routeError: route.ok ? null : route.error })
+            } catch (error) {
+              skipped.push({ id: candidate.id, path: candidate.path, reason: error instanceof Error ? error.message : String(error) })
+            }
+          }
+          writeJson(res, 200, { ok: true, imported, skipped })
+        },
+      },
+      {
+        kind: 'exact',
+        path: `${API_PREFIX}/agents/launch`,
+        handler: async (req, res) => {
+          if (req.method !== 'POST') { writeJson(res, 405, { ok: false, error: 'method-not-allowed' }); return }
+          if (!guard(req, res)) return
+          if (!(req.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) { writeJson(res, 415, { ok: false, error: 'json-required' }); return }
+          let body
+          try { body = await readJsonBody(req, ACTION_LIMIT) } catch (error) {
+            writeJson(res, 400, { ok: false, error: error?.message ?? 'bad-request' })
+            return
+          }
+          const id = String(body?.id ?? '').trim()
+          if (!PRESET_ID_RE.test(id)) { writeJson(res, 400, { ok: false, error: 'invalid-id' }); return }
+          const agent = readAgentFile(join(AGENTS_DIR, `${id}.toml`))
+          if (agent === null) { writeJson(res, 404, { ok: false, error: 'agent-not-found' }); return }
+          const result = await launchPersona(ctx, { agent, prompt: body?.prompt, cwd: body?.cwd })
+          writeJson(res, result.ok ? 200 : 400, result)
+        },
+      },
     ]
     const disposers = routes.map((route) => ctx.webServer.register(route))
+    const disposeTool = ctx.tools.register(agentsToolDefinition(ctx))
     return () => {
+      disposeTool?.()
       for (const dispose of disposers.reverse()) dispose()
     }
   }, 'rich-context: file + template routes')

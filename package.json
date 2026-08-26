@@ -1,13 +1,16 @@
 {
   "name": "dsh-rich-context",
-  "version": "0.1.0",
-  "description": "Agent instruction manager for DeepSeek Harness: edit, refine, and template the AGENTS.md files the harness actually reads \u2014 the user-global ~/.dsh/AGENTS.md and per-workspace AGENTS.md \u2014 from a sidebar panel under the Skill Center.",
+  "version": "0.2.0",
+  "description": "Agent manager for DeepSeek Harness: edit AGENTS.md (global + per-workspace) and subagent personas — one Codex-style TOML per role carrying a provider/model/effort route, compiled to a DSH agent preset, launchable as a real session from the panel or the model-facing agents tool.",
   "keywords": [
     "deepseek-harness",
     "deepseek-harness-plugin",
     "dsh-plugin",
     "dsh",
     "agents-md",
+    "subagents",
+    "agent-personas",
+    "agent-presets",
     "context-management",
     "instruction-files",
     "web-gui"

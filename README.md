@@ -1,8 +1,8 @@
 # dsh-rich-context
 
-**Agent instruction manager for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** — edit, refine, and route the `AGENTS.md` files your agents actually read, from a sidebar panel under the Skill Center.
+**Agent manager for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** — edit the `AGENTS.md` files your agents read, and define **subagent personas**: named roles with their own system prompt and a pinned `provider / model / effort` route, launchable as real sessions.
 
-> 管理 AGENTS.md——agent 实际读取的指令文件：全局/工作区编辑、自定义路径、跨工具源扫描与默认切换。
+> 管理 AGENTS.md 与子代理人格：全局/工作区编辑、源扫描与默认切换；每个角色一个 Codex 风格 TOML（含 provider/model/effort 路由），编译为 DSH 预设、可从面板或模型的 agents 工具启动为真实会话。
 
 ## Install
 
@@ -10,37 +10,37 @@
 dsh plugin --profile web add dsh-rich-context
 ```
 
-Restart the `dsh web` process. A **Context** entry appears in the sidebar (under Skill Center).
+Restart the `dsh web` process. An **Agents** entry appears in the sidebar (under Skill Center).
 
-## What it manages
+## Two modes
 
-The harness reads instruction files from two scopes (verified in `dsh-agent-instructions`):
-- **User-global**: `~/.dsh/AGENTS.md` — injected into every session
-- **Per-workspace**: `<workspace-root>/AGENTS.md` — scoped to that workspace's sessions
-
-Plus **custom paths** — click the path in the header to route to any absolute file path.
-
-## The panel
-
-Two tabs (segmented, bleed grammar):
+**Context** — the AGENTS.md manager (unchanged from v0.1):
 
 - **Global** — edit `~/.dsh/AGENTS.md` with the monospace editor (Ctrl+S saves)
 - **Workspace** — pick a workspace from the dropdown, edit its root `AGENTS.md`
+- **Sources** — scan 10 tool directories, symlink any detected `AGENTS.md`/`CLAUDE.md` as the default
 
-The **path field** in the header is click-to-edit: click it, type any absolute path, Enter to load that file instead. The editor follows.
+**Agents** — the persona roster:
 
-## Source scanning + default switching
+- One `~/.dsh/agents/<id>.toml` per agent: `name`, `description`, `provider`, `model`, `effort`, `sandbox_mode`, `developer_instructions` (the system prompt)
+- Every route is validated against the live model catalog — the same source the GUI model picker uses; glm-5.3 offers `high|max`, models without reasoning take `default`
+- Each persona **compiles to a DSH agent preset** (`~/.dsh/.agent-presets/<id>/`, standard composition with the persona row spliced in), so sessions compose from it like any preset
+- **Launch** spawns a real standard session: the seed request/header carries the full `{provider, model, reasoningEffort}` triple — the effort field no other spawn surface exposes — with the preset mounted and the workspace attached
+- **Import** copies + converts foreign agent files (Codex TOML from `~/.codex/agents` / `/root/.codex/agents`, Claude/Gemini markdown frontmatter), normalizing all five effort spellings; sources are never touched and provenance is stamped
 
-On the Global tab, the **AGENTS.md sources** section scans 10 tool directories (`.dsh`, `.codex`, `.claude`, `.omp`, `.pi`, `.cursor`, `.aider`, `.gemini`, `.copilot`, `.continue` — plus home root) for `AGENTS.md` and `CLAUDE.md` files. Each detected file lists with its line count and a **Set as default** button — clicking it **symlinks** `~/.dsh/AGENTS.md` to that file, so the harness transparently reads whichever tool's instructions you designate as the single source of truth. Reset restores a plain file.
+## Model-facing `agents` tool
+
+The plugin registers an `agents` tool: `list` the roster with routes, `read` one definition, `launch` a persona session. Use it for role-specialized delegation (auditor, researcher, implementer); the built-in `subagent` tool remains the right choice for anonymous children whose result you need inline.
 
 ## Architecture
 
 ```
 src/host.js            Node half — /api/rich-context/{state,file,template,sources,default}
-                       routes. Scans tool dirs, manages symlinks, reads/writes
-                       AGENTS.md files. Node builtins only.
+                       plus /agents/{list,file,catalog,import,launch}: persona TOML store,
+                       preset compiler, live model catalog, session spawner with seed
+                       request/header route, and the `agents` tool registration.
 src/client.bundle.js   Browser half — pure DOM overlay (no React dependency):
-                       sidebar entry + panel with tabs, editor, source scanner.
+                       sidebar entry + panel with Context/Agents mode tabs.
 ```
 
 ## License

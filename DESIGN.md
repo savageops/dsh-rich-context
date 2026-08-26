@@ -26,3 +26,48 @@
 Workspace instruction changes flow into sessions through the existing fs-touch inbox mechanism; the global file applies to new sessions. The panel says which.
 
 Zero runtime deps; node:fs + node:path only.
+
+# v0.2 — Agents: subagent personas (research-locked 2026-08-26)
+
+**Survey decisions (operator, 6 branched questions):** Codex-style TOML native
+format · two tabs (Context + Agents) · strict catalog-validated route triple ·
+both launch surfaces (model tool + panel button) · own `agents` tool ·
+one-time import + convert.
+
+**Persona model:** one `~/.dsh/agents/<id>.toml` per agent — `name`,
+`description`, `provider`, `model`, `effort`, `sandbox_mode`,
+`developer_instructions` (system prompt). Ids must satisfy the DSH preset rule
+`[a-z0-9][a-z0-9-]*` because each persona **compiles to an agent preset** at
+`~/.dsh/.agent-presets/<id>/`: the shipped `standard` composition with its
+persona row spliced to this agent's prompt (`@deepseek-ai/dsh-persona` row,
+same mechanism the hand-built `narrator` preset uses). The preset directory
+carries a `.dsh-agents.json` marker; the plugin only ever manages directories
+it created and refuses ids held by shipped or foreign presets.
+
+**Route triple (as DSH expects it):** `{provider, model, reasoningEffort}` is
+exactly DSH's `ModelSelection` (`sessions.selectModel` contract). Saves are
+validated against the live catalog — `ctx.llm.listConfigurableProviders()` +
+settings profiles + `resolveModelInfo` effort lists (same sources as the GUI
+model picker and memory-evolve's models tab). Models without reasoning efforts
+take the literal effort `default`.
+
+**Launch (the effort path nothing else had):** session creation with a seed
+`request/header` (seq 0) carrying `config: {provider, model, reasoningEffort}`,
+preset mounted through the `agentPresets` service via the `agents.create`
+setup callback (pre-set-mount sessions lose official tools — memory-evolve's
+documented failure), workspace attach with retry, then `followup(prompt)`.
+This is memory-evolve's verified spawn path extended with the effort field
+`de_session` does not expose.
+
+**Model tool `agents`:** actions `list | read | launch`. Positioned against
+the built-in `subagent` tool: anonymous inline-result children vs named
+persona sessions that run independently.
+
+**Import:** scans `~/.codex/agents` + `/root/.codex/agents` (TOML),
+`.claude/agents` and `.gemini/agents` (markdown frontmatter — the 6/11
+de-facto standard; Cursor and Goose both read `.claude/agents/` natively).
+Copies + converts (all five effort spellings normalized, `ultra`→`max`,
+`model[effort=]` and `provider/model` forms split), resolves missing provider
+from the catalog, stamps `# imported-from:` provenance, never touches the
+source. Agents whose model isn't served (e.g. `gpt-5.6-luna`) import with a
+needs-route badge and refuse to launch until edited.

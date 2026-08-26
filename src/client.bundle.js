@@ -6,9 +6,43 @@ window.__ModuleLoader__.load({
 		//#region lib/locale.js
 		const NS = "rich-context";
 		const en = {
-			"entry.label": "Context",
-			"entry.tooltip": "Manage AGENTS.md — the instruction files your agents read",
-			"panel.title": "Agent context",
+			"entry.label": "Agents",
+			"entry.tooltip": "Manage AGENTS.md and subagent personas — roles, routes, prompts",
+			"panel.title": "Agents",
+			"mode.context": "Context",
+			"mode.agents": "Agents",
+			"mode.context.hint": "AGENTS.md — the instructions every session reads",
+			"mode.agents.hint": "Subagent personas — one TOML per role in ~/.dsh/agents",
+			"ag.empty": "No personas yet — create one or import from Codex/Claude/Gemini.",
+			"ag.new": "New agent",
+			"ag.import": "Import…",
+			"ag.launch": "Launch",
+			"ag.edit": "Edit",
+			"ag.delete": "Delete",
+			"ag.save": "Save",
+			"ag.cancel": "Cancel",
+			"ag.saved": "saved + preset compiled",
+			"ag.launchTitle": "Launch agent",
+			"ag.launchPrompt": "First message for the new session (role, task, requirements)…",
+			"ag.launchCwd": "Working directory",
+			"ag.launching": "Launching…",
+			"ag.launched": "launched as",
+			"ag.importTitle": "Import agents",
+			"ag.importHint": "Foreign files are copied + converted; sources are never touched.",
+			"ag.importSelected": "Import selected",
+			"ag.importDone": "imported",
+			"ag.needsRoute": "needs route",
+			"ag.broken": "unparsable",
+			"ag.field.id": "Id",
+			"ag.field.name": "Name",
+			"ag.field.description": "Description",
+			"ag.field.provider": "Provider",
+			"ag.field.model": "Model",
+			"ag.field.effort": "Effort",
+			"ag.field.sandbox": "Sandbox",
+			"ag.field.prompt": "System prompt (developer_instructions)",
+			"ag.sandboxNote": "Stored for round-trip with Codex; DSH presets do not enforce it.",
+			"ag.routeIncomplete": "set provider + model + effort before launch",
 			"tab.global": "Global",
 			"tab.workspace": "Workspace",
 			"tab.global.hint": "~/.dsh/AGENTS.md — applies to every session",
@@ -33,9 +67,43 @@ window.__ModuleLoader__.load({
 			"sources.lines": "lines",
 		};
 		const zh = {
-			"entry.label": "上下文",
-			"entry.tooltip": "管理 AGENTS.md——agent 实际读取的指令文件",
-			"panel.title": "Agent 上下文",
+			"entry.label": "智能体",
+			"entry.tooltip": "管理 AGENTS.md 与子代理人格——角色、路由、提示词",
+			"panel.title": "智能体",
+			"mode.context": "上下文",
+			"mode.agents": "智能体",
+			"mode.context.hint": "AGENTS.md——所有会话读取的指令",
+			"mode.agents.hint": "子代理人格——每个角色一个 TOML，存于 ~/.dsh/agents",
+			"ag.empty": "还没有人格——新建一个，或从 Codex/Claude/Gemini 导入。",
+			"ag.new": "新建智能体",
+			"ag.import": "导入…",
+			"ag.launch": "启动",
+			"ag.edit": "编辑",
+			"ag.delete": "删除",
+			"ag.save": "保存",
+			"ag.cancel": "取消",
+			"ag.saved": "已保存并编译预设",
+			"ag.launchTitle": "启动智能体",
+			"ag.launchPrompt": "新会话的首条消息（角色、任务、要求）…",
+			"ag.launchCwd": "工作目录",
+			"ag.launching": "启动中…",
+			"ag.launched": "已启动为",
+			"ag.importTitle": "导入智能体",
+			"ag.importHint": "外部文件会被复制并转换，源文件绝不改动。",
+			"ag.importSelected": "导入选中",
+			"ag.importDone": "已导入",
+			"ag.needsRoute": "待定路由",
+			"ag.broken": "无法解析",
+			"ag.field.id": "标识",
+			"ag.field.name": "名称",
+			"ag.field.description": "描述",
+			"ag.field.provider": "供应商",
+			"ag.field.model": "模型",
+			"ag.field.effort": "思考强度",
+			"ag.field.sandbox": "沙箱",
+			"ag.field.prompt": "系统提示词（developer_instructions）",
+			"ag.sandboxNote": "与 Codex 往返保留；DSH 预设不强制执行。",
+			"ag.routeIncomplete": "启动前需设置 provider + model + effort",
 			"tab.global": "全局",
 			"tab.workspace": "工作区",
 			"tab.global.hint": "~/.dsh/AGENTS.md——作用于所有会话",
@@ -110,7 +178,44 @@ window.__ModuleLoader__.load({
 .rcx-saveBtn{appearance:none;background:0 0;border:none;border-left:1px solid var(--dsw-alias-border-l1);padding:9px 20px;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);cursor:pointer}
 .rcx-saveBtn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .rcx-saveBtn:disabled{opacity:.45;cursor:default}
-.rcx-saveDirty{color:var(--dsw-alias-state-business-primary);font-weight:500}`;
+.rcx-saveDirty{color:var(--dsh-alias-state-business-primary);font-weight:500}
+.rcx-modeTabs{display:flex;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.rcx-modeTab{appearance:none;background:0 0;border:none;border-right:1px solid var(--dsw-alias-border-l1);padding:10px 16px;font:inherit;font-size:13px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.rcx-modeTab:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.rcx-modeTabOn{color:var(--dsw-alias-state-business-primary);font-weight:500;box-shadow:inset 0 -2px 0 var(--dsw-alias-state-business-primary)}
+.rcx-modeHint{flex:1;align-self:center;padding:0 12px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcx-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.rcx-agList{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none}
+.rcx-agList::-webkit-scrollbar{display:none}
+.rcx-agRow{display:flex;align-items:center;gap:10px;width:100%;padding:9px 16px;border-bottom:1px solid var(--dsw-alias-border-l1);min-height:52px}
+.rcx-agRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.rcx-agMain{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.rcx-agName{color:var(--dsw-alias-label-primary);font-size:13px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcx-agDesc{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcx-agChips{display:flex;flex:none;gap:4px;max-width:45%;overflow:hidden}
+.rcx-agChip{color:var(--dsw-alias-label-secondary);font-size:10.5px;line-height:14px;font-family:ui-monospace,monospace;border:1px solid var(--dsw-alias-border-l2);border-radius:4px;padding:0 5px;white-space:nowrap}
+.rcx-agBadge{flex:none;color:var(--dsw-alias-state-warning-primary,#e6a23c);font-size:10.5px;line-height:14px;border:1px solid currentColor;border-radius:4px;padding:0 5px}
+.rcx-agActions{display:flex;flex:none;gap:2px}
+.rcx-agBtn{appearance:none;background:0 0;border:none;border-radius:6px;padding:4px 8px;font:inherit;font-size:12px;line-height:16px;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.rcx-agBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.rcx-agBtnDanger:hover{color:var(--dsw-alias-state-error-primary)}
+.rcx-agNew{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px 16px;border-bottom:1px solid var(--dsw-alias-border-l1);background:0 0;border-top:none;border-left:none;border-right:none;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:13px;cursor:pointer}
+.rcx-agNew:hover{color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-interactive-bg-hover)}
+.rcx-agNewPlus{font-size:15px;line-height:18px}
+.rcx-agForm{flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;scrollbar-width:none;padding:10px 16px;gap:8px}
+.rcx-agForm::-webkit-scrollbar{display:none}
+.rcx-agField{display:flex;flex-direction:column;gap:3px}
+.rcx-agLabel{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:14px}
+.rcx-agRow2{display:flex;gap:8px}
+.rcx-agRow2>.rcx-agField{flex:1}
+.rcx-agInput,.rcx-agArea{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);border-radius:8px;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;padding:5px 8px;outline:none}
+.rcx-agInput:focus,.rcx-agArea:focus{border-color:var(--dsw-alias-state-business-primary)}
+.rcx-agPrompt{min-height:160px;flex:1;resize:vertical;font-family:ui-monospace,monospace;font-size:12.5px;line-height:19px}
+.rcx-agNote{color:var(--dsw-alias-label-caption);font-size:11px;line-height:14px}
+.rcx-agFoot{display:flex;align-items:stretch;border-top:1px solid var(--dsw-alias-border-l1)}
+.rcx-agCheckRow{display:flex;align-items:flex-start;gap:8px;padding:8px 16px;border-bottom:1px solid var(--dsw-alias-border-l1);cursor:pointer}
+.rcx-agCheckRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.rcx-agCheck{margin-top:2px}`;
 		const tagId = "dsh-rich-context/panel.css";
 		if (typeof document !== "undefined" && document.querySelector(`style[data-plugin-css="${tagId}"]`) === null) {
 			const tag = document.createElement("style");
@@ -137,11 +242,39 @@ window.__ModuleLoader__.load({
 			const res = await fetch(`${API}/file`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 			return res.json();
 		}
+		async function fetchAgents() {
+			const res = await fetch(`${API}/agents`, { cache: "no-store" });
+			return res.json();
+		}
+		async function fetchCatalog() {
+			const res = await fetch(`${API}/agents/catalog`, { cache: "no-store" });
+			return res.json();
+		}
+		async function saveAgent(body) {
+			const res = await fetch(`${API}/agents/file`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+			return res.json();
+		}
+		async function deleteAgent(id) {
+			const res = await fetch(`${API}/agents/file?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+			return res.json();
+		}
+		async function fetchImportCandidates() {
+			const res = await fetch(`${API}/agents/import`, { cache: "no-store" });
+			return res.json();
+		}
+		async function runImport(paths) {
+			const res = await fetch(`${API}/agents/import`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ paths }) });
+			return res.json();
+		}
+		async function launchAgent(id, prompt, cwd) {
+			const res = await fetch(`${API}/agents/launch`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, prompt, cwd }) });
+			return res.json();
+		}
 		//#endregion
 		//#region lib/sidebar.js
 		const ENTRY_ATTR = "data-dsh-rich-context-entry";
 		const FAMILY = ["[data-dsh-taskboard-entry]", "[data-dsh-ssh-entry]", "[data-dsh-skill-explorer-entry]", "[data-dsh-generative-ideas-entry]", `[${ENTRY_ATTR}]`];
-		const ICON = `<svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h7.5L13 5v8.5H3z"/><path d="M5.5 7h5M5.5 9.5h5M5.5 12h3"/></svg>`;
+		const ICON = `<svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="5" r="2.3"/><path d="M1.8 13.2c.6-2.4 2-3.7 3.7-3.7s3.1 1.3 3.7 3.7"/><circle cx="11.2" cy="5.6" r="1.9"/><path d="M10.6 9.6c1.9.1 3.1 1.3 3.6 3.2"/></svg>`;
 
 		function sidebarRoot() {
 			const column = document.querySelector('[data-pane="sidebar"], [class*="sidebarCol"]');
@@ -208,6 +341,440 @@ window.__ModuleLoader__.load({
 				if (unsubscribe !== undefined) unsubscribe();
 				entry.remove();
 			};
+		}
+		//#endregion
+		//#region lib/agents-view.js
+		/**
+		 * The "Agents" mode of the panel — persona roster, editor, launch
+		 * dialog, importer. Pure DOM; talks to /api/rich-context/agents/*.
+		 */
+		function createAgentsView() {
+			let view = "roster";
+			let agents = [];
+			let catalog = null;
+			let editing = null; // { prevId, agent }
+			let launching = null; // agent being launched
+			let candidates = [];
+			const checked = new Set();
+
+			const root = document.createElement("div");
+			root.className = "rcx-body";
+			root.style.display = "none";
+
+			// ── Roster ────────────────────────────────────────────────────────
+			const rosterView = document.createElement("div");
+			rosterView.className = "rcx-body";
+			const listEl = document.createElement("div");
+			listEl.className = "rcx-agList";
+			const newBtn = document.createElement("button");
+			newBtn.type = "button";
+			newBtn.className = "rcx-agNew";
+			newBtn.innerHTML = `<span class="rcx-agNewPlus">+</span><span>${t("ag.new")}</span>`;
+			newBtn.addEventListener("click", () => { editing = { prevId: null, agent: { id: "", name: "", description: "", provider: "", model: "", effort: "default", sandbox: "read-only", prompt: "" } }; setView("edit"); });
+			const importBtn = document.createElement("button");
+			importBtn.type = "button";
+			importBtn.className = "rcx-agNew";
+			importBtn.style.borderBottom = "none";
+			importBtn.innerHTML = `<span class="rcx-agNewPlus">↧</span><span>${t("ag.import")}</span>`;
+			importBtn.addEventListener("click", () => { loadCandidates(); setView("import"); });
+			const rosterFoot = document.createElement("div");
+			rosterFoot.className = "rcx-agFoot";
+			const rosterStatus = document.createElement("span");
+			rosterStatus.className = "rcx-status";
+			rosterFoot.append(rosterStatus);
+			rosterView.append(listEl, newBtn, importBtn, rosterFoot);
+
+			const chipsFor = (agent) => {
+				const chips = [];
+				const route = [agent.provider || "?", agent.model || "?", agent.effort || "default"];
+				const chip = document.createElement("span");
+				chip.className = "rcx-agChip";
+				chip.textContent = route.join("/");
+				chips.push(chip);
+				if (agent.sandbox !== undefined && agent.sandbox !== "" && agent.sandbox !== "read-only") {
+					const box = document.createElement("span");
+					box.className = "rcx-agChip";
+					box.textContent = agent.sandbox;
+					chips.push(box);
+				}
+				return chips;
+			};
+
+			const renderRoster = () => {
+				listEl.innerHTML = "";
+				if (agents.length === 0) {
+					const empty = document.createElement("div");
+					empty.className = "rcx-agNote";
+					empty.style.padding = "14px 16px";
+					empty.textContent = t("ag.empty");
+					listEl.append(empty);
+				}
+				for (const agent of agents) {
+					const row = document.createElement("div");
+					row.className = "rcx-agRow";
+					const main = document.createElement("div");
+					main.className = "rcx-agMain";
+					const name = document.createElement("span");
+					name.className = "rcx-agName";
+					name.textContent = agent.broken === true ? `${agent.id} (${t("ag.broken")})` : `${agent.name} · ${agent.id}`;
+					const desc = document.createElement("span");
+					desc.className = "rcx-agDesc";
+					desc.textContent = agent.broken === true ? (agent.file ?? "") : (agent.description || agent.routeError || "");
+					main.append(name, desc);
+					const chips = document.createElement("div");
+					chips.className = "rcx-agChips";
+					if (agent.broken !== true) for (const chip of chipsFor(agent)) chips.append(chip);
+					if (agent.broken !== true && agent.routeOk !== true) {
+						const badge = document.createElement("span");
+						badge.className = "rcx-agBadge";
+						badge.textContent = t("ag.needsRoute");
+						badge.title = agent.routeError ?? "";
+						chips.append(badge);
+					}
+					const actions = document.createElement("div");
+					actions.className = "rcx-agActions";
+					const mkBtn = (label, cls, fn) => {
+						const btn = document.createElement("button");
+						btn.type = "button";
+						btn.className = cls;
+						btn.textContent = label;
+						btn.addEventListener("click", (event) => { event.stopPropagation(); fn(); });
+						return btn;
+					};
+					actions.append(
+						mkBtn(t("ag.launch"), "rcx-agBtn", () => { if (agent.broken !== true) { launching = agent; launchPromptEl.value = ""; setView("launch"); } }),
+						mkBtn(t("ag.edit"), "rcx-agBtn", () => { if (agent.broken !== true) { editing = { prevId: agent.id, agent: { ...agent } }; setView("edit"); } }),
+						mkBtn(t("ag.delete"), "rcx-agBtn rcx-agBtnDanger", () => {
+							if (window.confirm(`Delete agent "${agent.id}"?`)) deleteAgent(agent.id).then(() => refresh());
+						}),
+					);
+					row.append(main, chips, actions);
+					listEl.append(row);
+				}
+				rosterStatus.textContent = agents.length === 0 ? "" : `${agents.length}`;
+				rosterStatus.title = agents.length === 0 ? "" : `${agents.length} agent(s) in ~/.dsh/agents`;
+			};
+
+			// ── Editor ───────────────────────────────────────────────────────
+			const editView = document.createElement("div");
+			editView.className = "rcx-body";
+			const formEl = document.createElement("div");
+			formEl.className = "rcx-agForm";
+			const field = (labelText, inputEl) => {
+				const wrap = document.createElement("div");
+				wrap.className = "rcx-agField";
+				const label = document.createElement("span");
+				label.className = "rcx-agLabel";
+				label.textContent = labelText;
+				wrap.append(label, inputEl);
+				return wrap;
+			};
+			const idInput = document.createElement("input");
+			idInput.className = "rcx-agInput";
+			idInput.spellcheck = false;
+			idInput.placeholder = "auditor";
+			const nameInput = document.createElement("input");
+			nameInput.className = "rcx-agInput";
+			nameInput.placeholder = "Proof Auditor";
+			const descInput = document.createElement("input");
+			descInput.className = "rcx-agInput";
+			descInput.placeholder = "Read-only auditor for completion evidence…";
+			const providerSelect = document.createElement("select");
+			providerSelect.className = "rcx-agInput";
+			const modelSelect = document.createElement("select");
+			modelSelect.className = "rcx-agInput";
+			const effortSelect = document.createElement("select");
+			effortSelect.className = "rcx-agInput";
+			const sandboxSelect = document.createElement("select");
+			sandboxSelect.className = "rcx-agInput";
+			for (const value of ["read-only", "workspace-write", "danger-full-access"]) {
+				const option = document.createElement("option");
+				option.value = value;
+				option.textContent = value;
+				sandboxSelect.append(option);
+			}
+			const promptArea = document.createElement("textarea");
+			promptArea.className = "rcx-agInput rcx-agPrompt";
+			promptArea.spellcheck = false;
+			promptArea.placeholder = t("ag.field.prompt");
+			const idName = field(t("ag.field.id"), idInput);
+			const nameField = field(t("ag.field.name"), nameInput);
+			const row2 = document.createElement("div");
+			row2.className = "rcx-agRow2";
+			row2.append(idName, nameField);
+			const sandboxField = field(t("ag.field.sandbox"), sandboxSelect);
+			const sandboxNote = document.createElement("span");
+			sandboxNote.className = "rcx-agNote";
+			sandboxNote.textContent = t("ag.sandboxNote");
+			const routeRow = document.createElement("div");
+			routeRow.className = "rcx-agRow2";
+			routeRow.append(field(t("ag.field.provider"), providerSelect), field(t("ag.field.model"), modelSelect), field(t("ag.field.effort"), effortSelect));
+			formEl.append(row2, field(t("ag.field.description"), descInput), routeRow, sandboxField, sandboxNote, field(t("ag.field.prompt"), promptArea));
+			const editFoot = document.createElement("div");
+			editFoot.className = "rcx-agFoot";
+			const editStatus = document.createElement("span");
+			editStatus.className = "rcx-status";
+			const editCancel = document.createElement("button");
+			editCancel.type = "button";
+			editCancel.className = "rcx-saveBtn";
+			editCancel.textContent = t("ag.cancel");
+			editCancel.addEventListener("click", () => setView("roster"));
+			const editSave = document.createElement("button");
+			editSave.type = "button";
+			editSave.className = "rcx-saveBtn";
+			editSave.textContent = t("ag.save");
+			editSave.addEventListener("click", () => {
+				const agent = {
+					id: idInput.value.trim(),
+					name: nameInput.value.trim(),
+					description: descInput.value.trim(),
+					provider: providerSelect.value,
+					model: modelSelect.value,
+					effort: effortSelect.value,
+					sandbox: sandboxSelect.value,
+					prompt: promptArea.value,
+				};
+				saveAgent({ agent, prevId: editing?.prevId ?? undefined }).then((result) => {
+					if (result.ok !== true) throw new Error(result.error);
+					editStatus.className = "rcx-status rcx-statusOk";
+					editStatus.textContent = `${t("ag.saved")} — ${result.file}`;
+					refresh();
+					setView("roster");
+				}).catch((cause) => {
+					editStatus.className = "rcx-status rcx-statusErr";
+					editStatus.textContent = `${t("error.generic")}: ${cause.message}`;
+				});
+			});
+			editFoot.append(editStatus, editCancel, editSave);
+			editView.append(formEl, editFoot);
+
+			const fillRouteSelects = (agent) => {
+				providerSelect.innerHTML = "";
+				modelSelect.innerHTML = "";
+				effortSelect.innerHTML = "";
+				const providers = catalog?.providers ?? [];
+				const providerOption = (value, label) => {
+					const option = document.createElement("option");
+					option.value = value;
+					option.textContent = label;
+					return option;
+				};
+				providerSelect.append(providerOption("", "—"));
+				for (const provider of providers) providerSelect.append(providerOption(provider.id, provider.label ?? provider.id));
+				providerSelect.value = agent.provider && providers.some((p) => p.id === agent.provider) ? agent.provider : "";
+				const fillModels = () => {
+					modelSelect.innerHTML = "";
+					const entry = providers.find((p) => p.id === providerSelect.value);
+					modelSelect.append(providerOption("", "—"));
+					for (const model of entry?.models ?? []) modelSelect.append(providerOption(model.id, model.name ?? model.id));
+					modelSelect.value = agent.model && (entry?.models ?? []).some((m) => m.id === agent.model) ? agent.model : "";
+					fillEfforts();
+				};
+				const fillEfforts = () => {
+					effortSelect.innerHTML = "";
+					const entry = providers.find((p) => p.id === providerSelect.value);
+					const model = (entry?.models ?? []).find((m) => m.id === modelSelect.value);
+					const efforts = model?.efforts ?? [];
+					if (efforts.length === 0) {
+						const option = providerOption("default", "default");
+						effortSelect.append(option);
+					} else {
+						for (const effort of efforts) effortSelect.append(providerOption(effort, effort));
+						if (model?.defaultEffort !== undefined && model.defaultEffort !== null && efforts.includes(model.defaultEffort)) {
+							effortSelect.value = model.defaultEffort;
+						}
+					}
+					if (efforts.includes(agent.effort)) effortSelect.value = agent.effort;
+				};
+				providerSelect.onchange = () => { agent = { ...agent, provider: providerSelect.value, model: "", effort: "default" }; fillModels(); };
+				modelSelect.onchange = () => { agent = { ...agent, model: modelSelect.value, effort: "default" }; fillEfforts(); };
+				fillModels();
+			};
+
+			// ── Launch ───────────────────────────────────────────────────────
+			const launchView = document.createElement("div");
+			launchView.className = "rcx-body";
+			const launchForm = document.createElement("div");
+			launchForm.className = "rcx-agForm";
+			const launchHead = document.createElement("div");
+			launchHead.className = "rcx-agField";
+			const launchHeadLabel = document.createElement("span");
+			launchHeadLabel.className = "rcx-agLabel";
+			launchHeadLabel.textContent = t("ag.launchTitle");
+			const launchHeadChips = document.createElement("div");
+			launchHeadChips.className = "rcx-agChips";
+			launchHead.append(launchHeadLabel, launchHeadChips);
+			const launchPromptEl = document.createElement("textarea");
+			launchPromptEl.className = "rcx-agInput rcx-agPrompt";
+			launchPromptEl.spellcheck = false;
+			launchPromptEl.placeholder = t("ag.launchPrompt");
+			const launchCwd = document.createElement("input");
+			launchCwd.className = "rcx-agInput";
+			launchCwd.spellcheck = false;
+			launchCwd.value = "/home/sysadmin";
+			launchForm.append(launchHead, field(t("ag.launchCwd"), launchCwd), field(t("ag.field.prompt"), launchPromptEl));
+			const launchFoot = document.createElement("div");
+			launchFoot.className = "rcx-agFoot";
+			const launchStatus = document.createElement("span");
+			launchStatus.className = "rcx-status";
+			const launchCancel = document.createElement("button");
+			launchCancel.type = "button";
+			launchCancel.className = "rcx-saveBtn";
+			launchCancel.textContent = t("ag.cancel");
+			launchCancel.addEventListener("click", () => setView("roster"));
+			const launchGo = document.createElement("button");
+			launchGo.type = "button";
+			launchGo.className = "rcx-saveBtn rcx-saveDirty";
+			launchGo.textContent = t("ag.launch");
+			launchGo.addEventListener("click", () => {
+				launchStatus.className = "rcx-status";
+				launchStatus.textContent = t("ag.launching");
+				launchGo.disabled = true;
+				launchAgent(launching?.id, launchPromptEl.value, launchCwd.value.trim()).then((result) => {
+					if (result.ok !== true) throw new Error(result.error);
+					launchStatus.className = "rcx-status rcx-statusOk";
+					launchStatus.textContent = `${t("ag.launched")} ${result.sessionId}`;
+					window.setTimeout(() => setView("roster"), 1400);
+				}).catch((cause) => {
+					launchStatus.className = "rcx-status rcx-statusErr";
+					launchStatus.textContent = `${t("error.generic")}: ${cause.message}`;
+				}).finally(() => { launchGo.disabled = false; });
+			});
+			launchFoot.append(launchStatus, launchCancel, launchGo);
+			launchView.append(launchForm, launchFoot);
+
+			// ── Import ───────────────────────────────────────────────────────
+			const importView = document.createElement("div");
+			importView.className = "rcx-body";
+			const importList = document.createElement("div");
+			importList.className = "rcx-agList";
+			const importHint = document.createElement("div");
+			importHint.className = "rcx-agNote";
+			importHint.style.padding = "10px 16px";
+			importHint.textContent = t("ag.importHint");
+			const importFoot = document.createElement("div");
+			importFoot.className = "rcx-agFoot";
+			const importStatus = document.createElement("span");
+			importStatus.className = "rcx-status";
+			const importCancel = document.createElement("button");
+			importCancel.type = "button";
+			importCancel.className = "rcx-saveBtn";
+			importCancel.textContent = t("ag.cancel");
+			importCancel.addEventListener("click", () => setView("roster"));
+			const importGo = document.createElement("button");
+			importGo.type = "button";
+			importGo.className = "rcx-saveBtn";
+			importGo.textContent = t("ag.importSelected");
+			importGo.addEventListener("click", () => {
+				const paths = [...checked];
+				if (paths.length === 0) return;
+				runImport(paths).then((result) => {
+					if (result.ok !== true) throw new Error(result.error);
+					const imported = result.imported ?? [];
+					const skipped = result.skipped ?? [];
+					importStatus.className = imported.length > 0 ? "rcx-status rcx-statusOk" : "rcx-status rcx-statusErr";
+					importStatus.textContent = `${imported.length} ${t("ag.importDone")}${skipped.length > 0 ? ` · ${skipped.length} skipped` : ""}${imported.some((x) => x.routeOk === false) ? ` · ${t("ag.needsRoute")}` : ""}`;
+					refresh();
+				}).catch((cause) => {
+					importStatus.className = "rcx-status rcx-statusErr";
+					importStatus.textContent = `${t("error.generic")}: ${cause.message}`;
+				});
+			});
+			importFoot.append(importStatus, importCancel, importGo);
+			importView.append(importList, importHint, importFoot);
+
+			const renderCandidates = () => {
+				importList.innerHTML = "";
+				checked.clear();
+				if (candidates.length === 0) {
+					const empty = document.createElement("div");
+					empty.className = "rcx-agNote";
+					empty.style.padding = "14px 16px";
+					empty.textContent = "—";
+					importList.append(empty);
+					return;
+				}
+				for (const candidate of candidates) {
+					const row = document.createElement("label");
+					row.className = "rcx-agCheckRow";
+					const box = document.createElement("input");
+					box.type = "checkbox";
+					box.checked = false;
+					box.addEventListener("change", () => { if (box.checked) checked.add(candidate.path); else checked.delete(candidate.path); });
+					const main = document.createElement("div");
+					main.className = "rcx-agMain";
+					const name = document.createElement("span");
+					name.className = "rcx-agName";
+					name.textContent = `${candidate.name} → ${candidate.id}${candidate.exists ? " (exists)" : ""}`;
+					const desc = document.createElement("span");
+					desc.className = "rcx-agDesc";
+					desc.textContent = `${candidate.source} · ${candidate.model || "?"}${candidate.effort !== "" ? ` · ${candidate.effort}` : ""} · ${candidate.description}`;
+					main.append(name, desc);
+					const chips = document.createElement("div");
+					chips.className = "rcx-agChips";
+					if (candidate.provider === "" || candidate.model === "") {
+						const badge = document.createElement("span");
+						badge.className = "rcx-agBadge";
+						badge.textContent = t("ag.needsRoute");
+						chips.append(badge);
+					} else {
+						const chip = document.createElement("span");
+						chip.className = "rcx-agChip";
+						chip.textContent = `${candidate.provider}/${candidate.model}/${candidate.effort}`;
+						chips.append(chip);
+					}
+					row.append(box, main, chips);
+					importList.append(row);
+				}
+			};
+
+			const loadCandidates = () => {
+				fetchImportCandidates().then((body) => {
+					if (body.ok !== true) throw new Error(body.error);
+					candidates = body.candidates ?? [];
+					renderCandidates();
+				}).catch(() => { candidates = []; renderCandidates(); });
+			};
+
+			// ── Wiring ───────────────────────────────────────────────────────
+			root.append(rosterView, editView, launchView, importView);
+			const setView = (next) => {
+				view = next;
+				rosterView.style.display = next === "roster" ? "" : "none";
+				editView.style.display = next === "edit" ? "" : "none";
+				launchView.style.display = next === "launch" ? "" : "none";
+				importView.style.display = next === "import" ? "" : "none";
+				if (next === "edit" && editing !== null) {
+					idInput.value = editing.agent.id ?? "";
+					idInput.disabled = false;
+					nameInput.value = editing.agent.name ?? "";
+					descInput.value = editing.agent.description ?? "";
+					sandboxSelect.value = editing.agent.sandbox ?? "read-only";
+					promptArea.value = editing.agent.prompt ?? "";
+					fillRouteSelects({ ...editing.agent });
+					editStatus.className = "rcx-status";
+					editStatus.textContent = "";
+				}
+				if (next === "launch" && launching !== null) {
+					launchHeadChips.innerHTML = "";
+					for (const chip of chipsFor(launching)) launchHeadChips.append(chip);
+					launchGo.disabled = launching.routeOk !== true;
+					launchStatus.className = "rcx-status";
+					launchStatus.textContent = launching.routeOk === true ? "" : (launching.routeError ?? t("ag.routeIncomplete"));
+					launchCwd.value = "/home/sysadmin";
+				}
+			};
+
+			const refresh = () => {
+				Promise.all([fetchAgents(), fetchCatalog().catch(() => ({ ok: false, providers: [], defaultRoute: null }))]).then(([agentsBody, catalogBody]) => {
+					if (agentsBody.ok === true) agents = agentsBody.agents ?? [];
+					if (catalogBody.ok === true) catalog = catalogBody;
+					renderRoster();
+				}).catch(() => {});
+			};
+			refresh();
+
+			return { root, refresh, setView };
 		}
 		//#endregion
 		//#region lib/panel.js
@@ -311,6 +878,37 @@ window.__ModuleLoader__.load({
 			head.append(titleRow);
 			card.append(head);
 
+			// Mode tabs: Context | Agents
+			const modeTabs = document.createElement("div");
+			modeTabs.className = "rcx-modeTabs";
+			const modeContext = document.createElement("button");
+			modeContext.type = "button";
+			modeContext.className = "rcx-modeTab";
+			modeContext.textContent = t("mode.context");
+			const modeAgents = document.createElement("button");
+			modeAgents.type = "button";
+			modeAgents.className = "rcx-modeTab rcx-modeTabOn";
+			modeAgents.textContent = t("mode.agents");
+			const modeHint = document.createElement("span");
+			modeHint.className = "rcx-modeHint";
+			const agentsView = createAgentsView();
+			const contextBody = document.createElement("div");
+			contextBody.className = "rcx-body";
+			contextBody.style.display = "none";
+			const setMode = (next) => {
+				modeContext.className = next === "context" ? "rcx-modeTab rcx-modeTabOn" : "rcx-modeTab";
+				modeAgents.className = next === "agents" ? "rcx-modeTab rcx-modeTabOn" : "rcx-modeTab";
+				modeHint.textContent = next === "context" ? t("mode.context.hint") : t("mode.agents.hint");
+				contextBody.style.display = next === "context" ? "" : "none";
+				agentsView.root.style.display = next === "agents" ? "" : "none";
+				if (next === "agents") agentsView.refresh();
+			};
+			modeContext.addEventListener("click", () => setMode("context"));
+			modeAgents.addEventListener("click", () => setMode("agents"));
+			modeTabs.append(modeContext, modeAgents, modeHint);
+			card.append(modeTabs);
+			card.append(agentsView.root, contextBody);
+
 			// Tabs
 			const tabs = document.createElement("div");
 			tabs.className = "rcx-tabs";
@@ -337,7 +935,7 @@ window.__ModuleLoader__.load({
 			tabGlobal.addEventListener("click", () => setTab("global"));
 			tabWorkspace.addEventListener("click", () => setTab("workspace"));
 			tabs.append(tabGlobal, tabWorkspace, tabHintEl);
-			card.append(tabs);
+			contextBody.append(tabs);
 
 			// Sources section (Global tab only) — scan + switch AGENTS.md default
 			const sourcesEl = document.createElement("div");
@@ -355,7 +953,7 @@ window.__ModuleLoader__.load({
 			const sourceList = document.createElement("div");
 			sourceList.className = "rcx-sourceList";
 			sourcesEl.append(sourcesHead, sourceList);
-			card.append(sourcesEl);
+			contextBody.append(sourcesEl);
 
 			const loadSources = () => {
 				fetch(`${API}/sources`).then((res) => res.json()).then((body) => {
@@ -422,7 +1020,7 @@ window.__ModuleLoader__.load({
 			selectEl.className = "rcx-select";
 			selectEl.addEventListener("change", () => { workspace = selectEl.value; loadFile(); });
 			pickerEl.append(selectEl);
-			card.append(pickerEl);
+			contextBody.append(pickerEl);
 
 			// Editor
 			const editorWrap = document.createElement("div");
@@ -437,7 +1035,7 @@ window.__ModuleLoader__.load({
 				if (event.key === "Escape") { event.stopPropagation(); onClose(); }
 			});
 			editorWrap.append(editorEl);
-			card.append(editorWrap);
+			contextBody.append(editorWrap);
 
 			// Footer
 			const footer = document.createElement("div");
@@ -465,7 +1063,7 @@ window.__ModuleLoader__.load({
 				});
 			});
 			footer.append(statusEl, saveBtnEl);
-			card.append(footer);
+			contextBody.append(footer);
 
 			scrim.append(card);
 
@@ -481,6 +1079,7 @@ window.__ModuleLoader__.load({
 				}
 				loadFile();
 			}).catch(() => {});
+			setMode("agents");
 			setTab("global");
 
 			return scrim;
