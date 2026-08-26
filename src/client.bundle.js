@@ -3,91 +3,130 @@ window.__ModuleLoader__.load({
 	factory: (require) => {
 		var module = { exports: {} };
 		var exports = module.exports;
-		let react = require("react");
-		let react_dom_client = require("react-dom/client");
-		let react_jsx_runtime = require("react/jsx-runtime");
 		//#region lib/locale.js
 		const NS = "rich-context";
 		const en = {
 			"entry.label": "Context",
 			"entry.tooltip": "Manage AGENTS.md — the instruction files your agents read",
 			"panel.title": "Agent context",
-			"panel.subtitle": "The AGENTS.md files the harness loads into every session",
 			"tab.global": "Global",
 			"tab.workspace": "Workspace",
 			"tab.global.hint": "~/.dsh/AGENTS.md — applies to every session",
-			"tab.workspace.hint": "<workspace>/AGENTS.md — applies to that workspace's sessions",
+			"tab.workspace.hint": "<workspace>/AGENTS.md — applies to that workspace",
 			"workspace.placeholder": "Select a workspace…",
-			"editor.placeholder": "This file is empty — start with a template below, or write your rules.",
+			"editor.placeholder": "This file is empty — write your rules here.",
 			"editor.empty": "No file yet — saving creates it.",
-			"templates.title": "Templates",
-			"templates.hint": "Insert a titled section into the editor",
-			"templates.saveAs": "Save selection as template",
-			"templates.delete": "Delete template",
-			"templates.deleted": "deleted",
-			"templates.conflict": "name it first",
 			"action.save": "Save",
 			"action.saved": "saved",
-			"action.saving": "saving…",
 			"action.dirty": "unsaved changes",
 			"action.close": "Close",
-			"path.edit": "Click to edit path",
-			"path.invalid": "Must be an absolute path (start with /)",
 			"error.generic": "failed",
 			"effect.global": "Applies to new sessions immediately.",
-			"effect.workspace": "Workspace sessions pick this up through file-activity sync."
+			"effect.workspace": "Workspace sessions pick this up through file-activity sync.",
+			"effect.custom": "Custom path — the harness reads this if configured.",
 		};
 		const zh = {
 			"entry.label": "上下文",
-			"entry.tooltip": "管理 AGENTS.md——你的 agent 实际读取的指令文件",
+			"entry.tooltip": "管理 AGENTS.md——agent 实际读取的指令文件",
 			"panel.title": "Agent 上下文",
-			"panel.subtitle": "harness 加载进每个会话的 AGENTS.md 指令文件",
 			"tab.global": "全局",
 			"tab.workspace": "工作区",
 			"tab.global.hint": "~/.dsh/AGENTS.md——作用于所有会话",
 			"tab.workspace.hint": "<工作区>/AGENTS.md——只作用于该工作区",
 			"workspace.placeholder": "选择工作区…",
-			"editor.placeholder": "文件为空——从下面的模板开始，或直接写你的规则。",
+			"editor.placeholder": "文件为空——直接写你的规则。",
 			"editor.empty": "尚无文件——保存即创建。",
-			"templates.title": "模板",
-			"templates.hint": "向编辑器插入一个带标题的小节",
-			"templates.saveAs": "把选中内容存为模板",
-			"templates.delete": "删除模板",
-			"templates.deleted": "已删除",
-			"templates.conflict": "请先命名",
 			"action.save": "保存",
 			"action.saved": "已保存",
-			"action.saving": "保存中…",
 			"action.dirty": "有未保存修改",
 			"action.close": "关闭",
-			"path.edit": "点击编辑路径",
-			"path.invalid": "必须是绝对路径（以 / 开头）",
 			"error.generic": "失败",
 			"effect.global": "对新会话立即生效。",
-			"effect.workspace": "工作区会话通过文件活动同步感知变更。"
+			"effect.workspace": "工作区会话通过文件活动同步感知变更。",
+			"effect.custom": "自定义路径——如已配置则 harness 会读取。",
 		};
-		let dict = { en, zh };
 		const lang = (typeof navigator !== "undefined" && /^(zh)/i.test(navigator.language ?? "")) ? "zh" : "en";
+		const dict = { en, zh };
 		const t = (key) => dict[lang][key] ?? dict.en[key] ?? key;
 		//#endregion
+		//#region lib/styles.js
+		const css = `.rcx-entry{appearance:none;box-sizing:border-box;display:flex;align-items:center;gap:8px;width:100%;height:36px;padding:0 10px;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);background:0 0;border:none;border-radius:8px;cursor:pointer;text-align:left}
+.rcx-entry:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.rcx-entry[data-active="true"]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.rcx-entryIcon{display:inline-flex;justify-content:center;align-items:center;width:24px;height:24px;flex:none;color:var(--dsw-alias-label-tertiary)}
+.rcx-entryLabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcx-scrim{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;padding:24px}
+.rcx-card{width:100%;max-width:960px;max-height:min(88vh,780px);border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-specific-tip);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.rcx-card,.rcx-card *{box-sizing:border-box}
+.rcx-head{display:flex;align-items:baseline;gap:10px;padding:14px 0 10px}
+.rcx-titleRow{display:flex;align-items:center;gap:10px;padding:0 16px;width:100%}
+.rcx-title{font-size:14px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-primary);flex:none}
+.rcx-path{min-width:0;flex:1;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;text-decoration:underline dotted}
+.rcx-pathInput{min-width:0;flex:1;border:1px solid var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-size:12px;line-height:16px;font-family:ui-monospace,monospace;padding:2px 6px;border-radius:6px;outline:none}
+.rcx-closeBtn{flex:none;width:28px;height:28px;display:grid;place-items:center;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:999px;font-size:16px}
+.rcx-closeBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.rcx-tabs{display:flex;border-top:1px solid var(--dsw-alias-border-l1);border-bottom:1px solid var(--dsw-alias-border-l1)}
+.rcx-tab{appearance:none;background:0 0;border:none;border-right:1px solid var(--dsw-alias-border-l1);padding:8px 16px;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.rcx-tabOn{color:var(--dsw-alias-state-business-primary);font-weight:500}
+.rcx-tab:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.rcx-tabHint{flex:1;align-self:center;padding:0 12px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcx-picker{padding:8px 16px 0}
+.rcx-select{width:100%;height:30px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);border-radius:8px;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;padding:0 8px}
+.rcx-editorWrap{flex:1;min-height:0;display:flex;flex-direction:column;padding:8px 0 0}
+.rcx-editor{flex:1;min-height:0;width:100%;resize:none;border:none;outline:none;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:ui-monospace,monospace;font-size:12.5px;line-height:19px;padding:10px 16px;scrollbar-width:none}
+.rcx-editor::-webkit-scrollbar{display:none}
+.rcx-empty{padding:2px 16px;color:var(--dsw-alias-label-caption);font-size:11px;line-height:14px}
+.rcx-footer{display:flex;align-items:stretch;border-top:1px solid var(--dsw-alias-border-l1)}
+.rcx-status{flex:1;align-self:center;min-width:0;padding:0 12px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcx-statusErr{color:var(--dsw-alias-state-error-primary)}
+.rcx-statusOk{color:var(--dsw-alias-state-success-primary)}
+.rcx-saveBtn{appearance:none;background:0 0;border:none;border-left:1px solid var(--dsw-alias-border-l1);padding:9px 20px;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.rcx-saveBtn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.rcx-saveBtn:disabled{opacity:.45;cursor:default}
+.rcx-saveDirty{color:var(--dsw-alias-state-business-primary);font-weight:500}`;
+		const tagId = "dsh-rich-context/panel.css";
+		if (typeof document !== "undefined" && document.querySelector(`style[data-plugin-css="${tagId}"]`) === null) {
+			const tag = document.createElement("style");
+			tag.dataset.plugin = "dsh-rich-context";
+			tag.dataset.pluginCss = tagId;
+			tag.textContent = css;
+			document.head.appendChild(tag);
+		}
+		//#endregion
+		//#region lib/api.js
+		const API = "/api/rich-context";
+		async function fetchState() {
+			const res = await fetch(`${API}/state`, { cache: "no-store" });
+			return res.json();
+		}
+		async function fetchFile(scope, workspace, customPath) {
+			const params = new URLSearchParams({ scope });
+			if (scope === "workspace") params.set("workspace", workspace ?? "");
+			if (scope === "custom") params.set("path", customPath ?? "");
+			const res = await fetch(`${API}/file?${params}`, { cache: "no-store" });
+			return res.json();
+		}
+		async function saveFile(body) {
+			const res = await fetch(`${API}/file`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+			return res.json();
+		}
+		//#endregion
 		//#region lib/sidebar.js
-		/** Stable data attribute + family ordering (task-board → ssh → skill-explorer → rich-context). */
 		const ENTRY_ATTR = "data-dsh-rich-context-entry";
-		const FAMILY = ["[data-dsh-taskboard-entry]", "[data-dsh-ssh-entry]", "[data-dsh-skill-explorer-entry]", `[${ENTRY_ATTR}]`];
-		const ICON = "<svg viewBox=\"0 0 16 16\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 2.5h7.5L13 5v8.5H3z\"/><path d=\"M5.5 7h5M5.5 9.5h5M5.5 12h3\"/></svg>";
+		const FAMILY = ["[data-dsh-taskboard-entry]", "[data-dsh-ssh-entry]", "[data-dsh-skill-explorer-entry]", "[data-dsh-generative-ideas-entry]", `[${ENTRY_ATTR}]`];
+		const ICON = `<svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h7.5L13 5v8.5H3z"/><path d="M5.5 7h5M5.5 9.5h5M5.5 12h3"/></svg>`;
 
 		function sidebarRoot() {
-			const column = document.querySelector("[data-pane=\"sidebar\"], [class*=\"sidebarCol\"]");
+			const column = document.querySelector('[data-pane="sidebar"], [class*="sidebarCol"]');
 			if (column === null) return undefined;
-			return column.querySelector("[class*=\"logoRow\"]")?.parentElement ?? column.firstElementChild ?? undefined;
+			return column.querySelector('[class*="logoRow"]')?.parentElement ?? column.firstElementChild ?? undefined;
 		}
 		function newSessionButton(root) {
-			const nested = root.querySelector("button[class*=\"newSession\"]");
+			const nested = root.querySelector('button[class*="newSession"]');
 			if (nested !== null) return nested;
 			for (const child of root.children) if (child.tagName === "BUTTON") return child;
 			return undefined;
 		}
-		/** Self-healing sidebar entry (task-board's proven core, compact local copy). */
 		function mountSidebarEntry(onToggle, isActive, subscribe) {
 			if (document.querySelector(`[${ENTRY_ATTR}]`) !== null) return () => {};
 			const entry = document.createElement("button");
@@ -106,7 +145,7 @@ window.__ModuleLoader__.load({
 				const button = root === undefined ? undefined : newSessionButton(root);
 				if (button === undefined) return false;
 				if (entry.parentElement !== root) {
-					const row = button.closest("[class*=\"logoRow\"]");
+					const row = button.closest('[class*="logoRow"]');
 					const base = row !== null && row.parentElement === root ? row : button;
 					const family = Array.from(root.children).filter((el) => el instanceof HTMLElement && el.matches(FAMILY.join(", ")));
 					const anchor = family.length > 0 ? family[family.length - 1].nextElementSibling : base.nextElementSibling;
@@ -131,7 +170,7 @@ window.__ModuleLoader__.load({
 			});
 			let unsubscribe;
 			if (subscribe !== undefined) {
-				const sync = () => { if (isActive()) entry.dataset.active = "true"; else delete entry.dataset.active; };
+				const sync = () => { if (isActive()) entry.setAttribute("data-active", "true"); else entry.removeAttribute("data-active"); };
 				unsubscribe = subscribe(sync);
 				sync();
 			}
@@ -139,304 +178,206 @@ window.__ModuleLoader__.load({
 			return () => {
 				waitObserver.disconnect();
 				rootObserver.disconnect();
-				unsubscribe?.();
+				if (unsubscribe !== undefined) unsubscribe();
 				entry.remove();
 			};
 		}
 		//#endregion
-		//#region lib/styles.js
-		const css = `.rcx-entry{appearance:none;display:flex;align-items:center;gap:8px;width:100%;height:36px;padding:0 10px;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);background:0 0;border:none;border-radius:8px;cursor:pointer;text-align:left}
-.rcx-entry:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.rcx-entry[data-active="true"]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.rcx-entryIcon{justify-content:center;align-items:center;width:24px;height:24px;display:inline-flex;flex:none;color:var(--dsw-alias-label-tertiary)}
-.rcx-entryLabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rcx-scrim{position:fixed;inset:0;z-index:90;background:color-mix(in srgb, var(--dsw-alias-bg-mask-2, rgba(0,0,0,.45)) 100%, transparent);display:flex;align-items:center;justify-content:center;padding:24px}
-.rcx-card{width:100%;max-width:960px;max-height:min(88vh,780px);border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-specific-tip);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 24px var(--dsw-alias-bg-mask-2, rgba(0,0,0,.35))}
-.rcx-card,.rcx-card *{box-sizing:border-box}
-.rcx-head{display:flex;flex-direction:column;gap:2px;padding:14px 0 10px}
-.rcx-titleRow{display:flex;align-items:baseline;gap:8px;padding:0 16px}
-.rcx-title{font-size:14px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-primary)}
-.rcx-path{min-width:0;flex:1;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;text-decoration:underline dotted}
-.rcx-pathInput{min-width:0;flex:1;border:1px solid var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-size:12px;line-height:16px;font-family:ui-monospace,monospace;padding:2px 6px;border-radius:6px;outline:none}
-.rcx-closeBtn{flex:none;width:28px;height:28px;display:grid;place-items:center;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:999px}
-.rcx-closeBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.rcx-subtitle{padding:0 16px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px}
-.rcx-tabs{display:flex;border-top:1px solid var(--dsw-alias-border-l1);border-bottom:1px solid var(--dsw-alias-border-l1)}
-.rcx-tab{appearance:none;background:0 0;border:none;border-right:1px solid var(--dsw-alias-border-l1);padding:8px 16px;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);cursor:pointer}
-.rcx-tab:first-child{border-left:none}
-.rcx-tabOn{color:var(--dsw-alias-state-business-primary);font-weight:500}
-.rcx-tab:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.rcx-tabHint{flex:1;align-self:center;padding:0 12px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rcx-picker{padding:8px 16px 0}
-.rcx-select{width:100%;height:30px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);border-radius:8px;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;padding:0 8px}
-.rcx-editorWrap{flex:1;min-height:0;display:flex;flex-direction:column;padding:8px 0 0}
-.rcx-editor{flex:1;min-height:0;width:100%;resize:none;border:none;outline:none;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:ui-monospace,monospace;font-size:12.5px;line-height:19px;padding:10px 16px;scrollbar-width:none}
-.rcx-editor::-webkit-scrollbar{display:none}
-.rcx-empty{padding:2px 16px;color:var(--dsw-alias-label-caption);font-size:11px;line-height:14px}
-.
-.
-.
-.
-.
-.
-.
-.
-.
-.
-.rcx-footer{display:flex;align-items:stretch;border-top:1px solid var(--dsw-alias-border-l1)}
-.rcx-status{flex:1;align-self:center;min-width:0;padding:0 12px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rcx-statusErr{color:var(--dsw-alias-state-error-primary)}
-.rcx-statusOk{color:var(--dsw-alias-state-success-primary)}
-.rcx-saveBtn{appearance:none;background:0 0;border:none;border-left:1px solid var(--dsw-alias-border-l1);padding:9px 20px;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);cursor:pointer}
-.rcx-saveBtn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.rcx-saveBtn:disabled{opacity:.45;cursor:default}
-.rcx-saveDirty{color:var(--dsw-alias-state-business-primary);font-weight:500}`;
-		const tagId = "dsh-rich-context/panel.css";
-		if (typeof document !== "undefined" && document.querySelector(`style[data-plugin-css="${tagId}"]`) === null) {
-			const tag = document.createElement("style");
-			tag.dataset.plugin = "dsh-rich-context";
-			tag.dataset.pluginCss = tagId;
-			tag.textContent = css;
-			document.head.appendChild(tag);
-		}
-		//#endregion
-		//#region lib/api.js
-		const API = "/api/rich-context";
-		async function fetchState() {
-			const res = await fetch(`${API}/state`, { cache: "no-store" });
-			const body = await res.json();
-			if (!res.ok || body.ok !== true) throw new Error(body.error ?? `state failed: HTTP ${res.status}`);
-			return body;
-		}
-		async function fetchFile(scope, workspace) {
-			const params = new URLSearchParams({ scope });
-			if (scope === "workspace") params.set("workspace", workspace ?? "");
-			const res = await fetch(`${API}/file?${params}`, { cache: "no-store" });
-			const body = await res.json();
-			if (!res.ok || body.ok !== true) throw new Error(body.error ?? `read failed: HTTP ${res.status}`);
-			return body;
-		}
-		async function saveFile(scope, workspace, content) {
-			const res = await fetch(`${API}/file`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope, workspace, content }) });
-			const body = await res.json();
-			if (!res.ok || body.ok !== true) throw new Error(body.error ?? `save failed: HTTP ${res.status}`);
-			return body;
-		}
-		async function putTemplate(id, section) {
-			const res = await fetch(`${API}/template`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, section }) });
-			const body = await res.json();
-			if (!res.ok || body.ok !== true) throw new Error(body.error ?? `template save failed: HTTP ${res.status}`);
-			return body;
-		}
-		async function deleteTemplate(id) {
-			const res = await fetch(`${API}/template`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ id }) });
-			const body = await res.json();
-			if (!res.ok || body.ok !== true) throw new Error(body.error ?? `template delete failed: HTTP ${res.status}`);
-			return body;
-		}
-		//#endregion
 		//#region lib/panel.js
+		/**
+		 * The overlay panel — pure DOM, no React. Two tabs (Global / Workspace)
+		 * + custom path routing, monospace editor, save.
+		 */
+		function createPanel(onClose) {
+			// --- State ---
+			let tab = "global";
+			let workspace = "";
+			let customPath = null;
+			let content = "";
+			let saved = null;
+			let busy = false;
+			let state = null;
+			let statusEl, pathEl, editorEl, saveBtnEl, tabHintEl, pickerEl, selectEl;
 
-		/** Click-to-edit path field: shows the current file path; click to type a custom absolute path. */
-		function PathField({ path, onPathChange }) {
-			const [editing, setEditing] = (0, react.useState)(false);
-			const [draft, setDraft] = (0, react.useState)(path);
-			const commit = () => {
-				const trimmed = draft.trim();
-				if (trimmed.startsWith("/") && trimmed !== path) onPathChange(trimmed);
-				else setDraft(path);
-				setEditing(false);
+			// --- Helpers ---
+			const setStatus = (kind, text) => {
+				statusEl.textContent = text ?? "";
+				statusEl.className = kind === "error" ? "rcx-status rcx-statusErr" : kind === "ok" ? "rcx-status rcx-statusOk" : "rcx-status";
 			};
-			if (editing) return (0, react_jsx_runtime.jsx)("input", {
-				type: "text",
-				className: "rcx-pathInput",
-				value: draft,
-				autoFocus: true,
-				spellCheck: false,
-				onChange: (event) => setDraft(event.target.value),
-				onBlur: commit,
-				onKeyDown: (event) => {
+			const updateDirty = () => {
+				const dirty = content !== (saved ?? "");
+				saveBtnEl.disabled = busy || !dirty || (tab === "workspace" && workspace === "" && customPath === null);
+				saveBtnEl.className = dirty ? "rcx-saveBtn rcx-saveDirty" : "rcx-saveBtn";
+				if (!dirty && statusEl.className.indexOf("Err") === -1) statusEl.textContent = "";
+				else if (dirty && statusEl.textContent === "") statusEl.textContent = t("action.dirty");
+			};
+			const updatePath = () => {
+				const p = customPath !== null ? customPath : tab === "global" ? (state?.globalPath ?? "~/.dsh/AGENTS.md") : workspace !== "" ? `/${workspace.replaceAll("--", "/")}/AGENTS.md` : "";
+				pathEl.textContent = p;
+			};
+			const loadFile = () => {
+				const scope = customPath !== null ? "custom" : tab;
+				fetchFile(scope, workspace, customPath).then((body) => {
+					if (body.ok !== true) throw new Error(body.error);
+					content = body.content ?? "";
+					saved = content;
+					editorEl.value = content;
+					updateDirty();
+					updatePath();
+				}).catch((cause) => setStatus("error", `${t("error.generic")}: ${cause.message}`));
+			};
+
+			// --- Build DOM ---
+			const scrim = document.createElement("div");
+			scrim.className = "rcx-scrim";
+			scrim.addEventListener("click", (event) => { if (event.target === scrim) onClose(); });
+
+			const card = document.createElement("div");
+			card.className = "rcx-card";
+			card.setAttribute("aria-label", t("panel.title"));
+
+			// Header
+			const head = document.createElement("div");
+			head.className = "rcx-head";
+			const titleRow = document.createElement("div");
+			titleRow.className = "rcx-titleRow";
+			const title = document.createElement("span");
+			title.className = "rcx-title";
+			title.textContent = t("panel.title");
+			pathEl = document.createElement("span");
+			pathEl.className = "rcx-path";
+			pathEl.title = t("entry.tooltip");
+			pathEl.addEventListener("click", () => {
+				const input = document.createElement("input");
+				input.type = "text";
+				input.className = "rcx-pathInput";
+				input.value = pathEl.textContent;
+				input.spellcheck = false;
+				pathEl.replaceWith(input);
+				input.focus();
+				input.select();
+				const commit = () => {
+					const trimmed = input.value.trim();
+					if (trimmed.startsWith("/") && trimmed !== pathEl.textContent) {
+						customPath = trimmed;
+					}
+					input.replaceWith(pathEl);
+					if (customPath !== null) loadFile(); else updatePath();
+				};
+				input.addEventListener("blur", commit);
+				input.addEventListener("keydown", (event) => {
 					event.stopPropagation();
-					if (event.key === "Enter") commit();
-					if (event.key === "Escape") { setDraft(path); setEditing(false); }
+					if (event.key === "Enter") { event.preventDefault(); commit(); }
+					if (event.key === "Escape") { event.stopPropagation(); input.replaceWith(pathEl); updatePath(); }
+				});
+			});
+			const closeBtn = document.createElement("button");
+			closeBtn.type = "button";
+			closeBtn.className = "rcx-closeBtn";
+			closeBtn.setAttribute("aria-label", t("action.close"));
+			closeBtn.textContent = "\u00d7";
+			closeBtn.addEventListener("click", onClose);
+			titleRow.append(title, pathEl, closeBtn);
+			head.append(titleRow);
+			card.append(head);
+
+			// Tabs
+			const tabs = document.createElement("div");
+			tabs.className = "rcx-tabs";
+			const tabGlobal = document.createElement("button");
+			tabGlobal.type = "button";
+			tabGlobal.className = "rcx-tab rcx-tabOn";
+			tabGlobal.textContent = t("tab.global");
+			const tabWorkspace = document.createElement("button");
+			tabWorkspace.type = "button";
+			tabWorkspace.className = "rcx-tab";
+			tabWorkspace.textContent = t("tab.workspace");
+			tabHintEl = document.createElement("span");
+			tabHintEl.className = "rcx-tabHint";
+			const setTab = (next) => {
+				tab = next;
+				customPath = null;
+				tabGlobal.className = next === "global" ? "rcx-tab rcx-tabOn" : "rcx-tab";
+				tabWorkspace.className = next === "workspace" ? "rcx-tab rcx-tabOn" : "rcx-tab";
+				tabHintEl.textContent = next === "global" ? t("tab.global.hint") : t("tab.workspace.hint");
+				pickerEl.style.display = next === "workspace" ? "" : "none";
+				loadFile();
+			};
+			tabGlobal.addEventListener("click", () => setTab("global"));
+			tabWorkspace.addEventListener("click", () => setTab("workspace"));
+			tabs.append(tabGlobal, tabWorkspace, tabHintEl);
+			card.append(tabs);
+
+			// Workspace picker
+			pickerEl = document.createElement("div");
+			pickerEl.className = "rcx-picker";
+			pickerEl.style.display = "none";
+			selectEl = document.createElement("select");
+			selectEl.className = "rcx-select";
+			selectEl.addEventListener("change", () => { workspace = selectEl.value; loadFile(); });
+			pickerEl.append(selectEl);
+			card.append(pickerEl);
+
+			// Editor
+			const editorWrap = document.createElement("div");
+			editorWrap.className = "rcx-editorWrap";
+			editorEl = document.createElement("textarea");
+			editorEl.className = "rcx-editor";
+			editorEl.spellcheck = false;
+			editorEl.placeholder = t("editor.placeholder");
+			editorEl.addEventListener("input", () => { content = editorEl.value; updateDirty(); });
+			editorEl.addEventListener("keydown", (event) => {
+				if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); saveBtnEl.click(); }
+				if (event.key === "Escape") { event.stopPropagation(); onClose(); }
+			});
+			editorWrap.append(editorEl);
+			card.append(editorWrap);
+
+			// Footer
+			const footer = document.createElement("div");
+			footer.className = "rcx-footer";
+			statusEl = document.createElement("span");
+			statusEl.className = "rcx-status";
+			saveBtnEl = document.createElement("button");
+			saveBtnEl.type = "button";
+			saveBtnEl.className = "rcx-saveBtn";
+			saveBtnEl.textContent = t("action.save");
+			saveBtnEl.disabled = true;
+			saveBtnEl.addEventListener("click", () => {
+				busy = true;
+				saveBtnEl.disabled = true;
+				const body = customPath !== null ? { scope: "custom", path: customPath, content } : { scope: tab, workspace, content };
+				saveFile(body).then((result) => {
+					if (result.ok !== true) throw new Error(result.error);
+					saved = content;
+					setStatus("ok", `${t("action.saved")} — ${customPath !== null ? result.path : tab === "global" ? t("effect.global") : t("effect.workspace")}`);
+				}).catch((cause) => {
+					setStatus("error", `${t("error.generic")}: ${cause.message}`);
+				}).finally(() => {
+					busy = false;
+					updateDirty();
+				});
+			});
+			footer.append(statusEl, saveBtnEl);
+			card.append(footer);
+
+			scrim.append(card);
+
+			// --- Init ---
+			fetchState().then((body) => {
+				if (body.ok !== true) return;
+				state = body;
+				for (const slug of body.workspaces ?? []) {
+					const option = document.createElement("option");
+					option.value = slug;
+					option.textContent = slug;
+					selectEl.append(option);
 				}
-			});
-			return (0, react_jsx_runtime.jsx)("span", {
-				className: "rcx-path",
-				title: "Click to edit path",
-				onClick: () => { setDraft(path); setEditing(true); },
-				children: path
-			});
-		}
-		/** The manager overlay: two tabs (Global / Workspace) + custom path routing, editor, save. */
-		function ContextPanel({ onClose }) {
-			const [state, setState] = (0, react.useState)(null);
-			const [tab, setTab] = (0, react.useState)("global");
-			const [workspace, setWorkspace] = (0, react.useState)("");
-			const [content, setContent] = (0, react.useState)("");
-			const [saved, setSaved] = (0, react.useState)(null);
-			const [busy, setBusy] = (0, react.useState)(false);
-			const [status, setStatus] = (0, react.useState)(null);
-			const [customPath, setCustomPath] = (0, react.useState)(null);
+				loadFile();
+			}).catch(() => {});
+			setTab("global");
 
-			(0, react.useEffect)(() => {
-				fetchState().then(setState).catch((cause) => setStatus({ kind: "error", text: cause instanceof Error ? cause.message : String(cause) }));
-			}, []);
-
-			const loadFile = (0, react.useCallback)((nextTab, nextWorkspace) => {
-				setSaved(null);
-				setStatus(null);
-				fetchFile(nextTab, nextWorkspace).then((body) => { setContent(body.content ?? ""); setSaved(body.content ?? ""); }).catch((cause) => setStatus({ kind: "error", text: cause instanceof Error ? cause.message : String(cause) }));
-			}, []);
-			(0, react.useEffect)(() => { if (tab === "global") loadFile("global", ""); }, [tab, loadFile]);
-			const loadCustomFile = (0, react.useCallback)((path) => {
-				setSaved(null);
-				setStatus(null);
-				fetch(`${API}/file?scope=custom&path=${encodeURIComponent(path)}`, { cache: "no-store" })
-					.then((res) => res.json())
-					.then((body) => { if (body.ok) { setContent(body.content ?? ""); setSaved(body.content ?? ""); } else throw new Error(body.error); })
-					.catch((cause) => setStatus({ kind: "error", text: cause instanceof Error ? cause.message : String(cause) }));
-			}, []);
-			(0, react.useEffect)(() => { if (tab === "workspace" && workspace !== "") loadFile("workspace", workspace); }, [tab, workspace, loadFile]);
-
-			const dirty = content !== (saved ?? "");
-			const filePath = customPath !== null ? customPath : tab === "global" ? (state?.globalPath ?? "~/.dsh/AGENTS.md") : workspace !== "" ? `${workspace.replaceAll("--", "/")}/AGENTS.md` : "";
-
-			const save = () => {
-				setBusy(true);
-				const effectiveScope = customPath !== null ? "custom" : tab;
-				const pathBody = customPath !== null ? { scope: "custom", path: customPath, content } : { scope: tab, workspace, content };
-				fetch(`${API}/file`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(pathBody) })
-					.then((res) => res.json())
-					.then((body) => {
-						if (!body.ok) throw new Error(body.error);
-						setSaved(content);
-						setStatus({ kind: "ok", text: `${t("action.saved")} — ${effectiveScope === "global" ? t("effect.global") : effectiveScope === "custom" ? body.path : t("effect.workspace")}` });
-					})
-					.catch((cause) => setStatus({ kind: "error", text: `${t("error.generic")}: ${cause instanceof Error ? cause.message : String(cause)}` }))
-					.finally(() => setBusy(false));
-			};
-
-			const insertTemplate = (template) => {
-				const block = content.trim() === "" ? template.section : `${content.replace(/\s*$/, "")}\n\n${template.section}\n`;
-				setContent(block);
-			};
-			const saveSelectionAsTemplate = () => {
-				const selection = typeof document !== "undefined" ? (document.activeElement?.dataset?.rcxEditor === "true" ? "" : "") : "";
-				const name = window.prompt(t("templates.saveAs") + " — name:");
-				if (name === null || name.trim() === "") return;
-				const section = (window.getSelection?.()?.toString() ?? "").trim() !== "" ? window.getSelection().toString() : content.trim();
-				if (section === "") { setStatus({ kind: "error", text: t("templates.conflict") }); return; }
-				putTemplate(`user:${name.trim().replaceAll(" ", "-")}`, section).then(() => fetchState().then(setState)).catch((cause) => setStatus({ kind: "error", text: cause instanceof Error ? cause.message : String(cause) }));
-			};
-			const removeTemplate = (template) => {
-				deleteTemplate(template.id).then(() => fetchState().then(setState)).catch((cause) => setStatus({ kind: "error", text: cause instanceof Error ? cause.message : String(cause) }));
-			};
-
-			return (0, react_jsx_runtime.jsxs)("div", {
-				className: "rcx-scrim",
-				onClick: (event) => { if (event.target === event.currentTarget) onClose(); },
-				children: [
-					(0, react_jsx_runtime.jsxs)("div", {
-						className: "rcx-card",
-						"aria-label": t("panel.title"),
-						children: [
-							(0, react_jsx_runtime.jsxs)("div", {
-								className: "rcx-head",
-								children: [
-									(0, react_jsx_runtime.jsxs)("div", {
-										className: "rcx-titleRow",
-										children: [
-											(0, react_jsx_runtime.jsx)("span", { className: "rcx-title", children: t("panel.title") }),
-											(0, react_jsx_runtime.jsx)(PathField, { path: filePath, onPathChange: (p) => { setCustomPath(p); loadCustomFile(p); } }),
-											(0, react_jsx_runtime.jsx)("button", { type: "button", className: "rcx-closeBtn", "aria-label": t("action.close"), onClick: onClose, children: "\u00d7" })
-										]
-									}),
-									(0, react_jsx_runtime.jsx)("span", { className: "rcx-subtitle", children: t("panel.subtitle") })
-								]
-							}),
-							(0, react_jsx_runtime.jsxs)("div", {
-								className: "rcx-tabs",
-								children: [
-									(0, react_jsx_runtime.jsx)("button", { type: "button", className: tab === "global" ? "rcx-tab rcx-tabOn" : "rcx-tab", onClick: () => setTab("global"), children: t("tab.global") }),
-									(0, react_jsx_runtime.jsx)("button", { type: "button", className: tab === "workspace" ? "rcx-tab rcx-tabOn" : "rcx-tab", onClick: () => setTab("workspace"), children: t("tab.workspace") }),
-									(0, react_jsx_runtime.jsx)("span", { className: "rcx-tabHint", children: tab === "global" ? t("tab.global.hint") : t("tab.workspace.hint") })
-								]
-							}),
-							tab === "workspace" ? (0, react_jsx_runtime.jsx)("div", {
-								className: "rcx-picker",
-								children: (0, react_jsx_runtime.jsx)("select", {
-									className: "rcx-select",
-									value: workspace,
-									onChange: (event) => setWorkspace(event.target.value),
-									children: [
-										(0, react_jsx_runtime.jsx)("option", { value: "", disabled: true, children: t("workspace.placeholder") }),
-										...(state?.workspaces ?? []).map((slug) => (0, react_jsx_runtime.jsx)("option", { value: slug, children: slug }, slug))
-									]
-								})
-							}) : null,
-							(0, react_jsx_runtime.jsxs)("div", {
-								className: "rcx-editorWrap",
-								children: [
-									(0, react_jsx_runtime.jsx)("textarea", {
-										className: "rcx-editor",
-										"data-rcx-editor": "true",
-										spellCheck: false,
-										value: content,
-										placeholder: t("editor.placeholder"),
-										onChange: (event) => setContent(event.target.value),
-										onKeyDown: (event) => {
-											if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); if (!busy && (tab === "global" || workspace !== "")) save(); }
-											if (event.key === "Escape") { event.stopPropagation(); onClose(); }
-										},
-										disabled: tab === "workspace" && workspace === ""
-									}),
-									(0, react_jsx_runtime.jsx)("span", { className: "rcx-empty", children: saved === null ? t("editor.empty") : null })
-								]
-							}),
-							("div", {
-								className: "rcx-templates",
-								children: [
-									(0, react_jsx_runtime.jsxs)("div", {
-										className: "rcx-templatesHead",
-										children: [
-											(0, react_jsx_runtime.jsx)("span", { className: "rcx-templatesTitle", children: t("templates.title") }),
-											(0, react_jsx_runtime.jsx)("span", { className: "rcx-templatesHint", children: t("templates.hint") }),
-											(0, react_jsx_runtime.jsx)("button", { type: "button", className: "rcx-templateChip", onClick: saveSelectionAsTemplate, children: t("templates.saveAs") })
-										]
-									}),
-									(0, react_jsx_runtime.jsx)("div", {
-										className: "rcx-templateList",
-										children: (state?.templates ?? []).map((template) => (0, react_jsx_runtime.jsxs)("button", {
-											type: "button",
-											className: template.id.startsWith("user:") ? "rcx-templateChip rcx-templateChipUser" : "rcx-templateChip",
-											onClick: () => insertTemplate(template),
-											title: template.section.slice(0, 200),
-											children: [
-												template.name,
-												template.id.startsWith("user:") ? (0, react_jsx_runtime.jsx)("span", { role: "button", className: "rcx-templateDel", "aria-label": t("templates.delete"), onClick: (event) => { event.stopPropagation(); removeTemplate(template); }, children: "\u00d7" }) : null
-											]
-										}, template.id))
-									})
-								]
-							}),
-							(0, react_jsx_runtime.jsxs)("div", {
-								className: "rcx-footer",
-								children: [
-									(0, react_jsx_runtime.jsx)("span", { className: status?.kind === "error" ? "rcx-status rcx-statusErr" : status?.kind === "ok" ? "rcx-status rcx-statusOk" : "rcx-status", role: status?.kind === "error" ? "alert" : "status", children: status?.text ?? (dirty ? t("action.dirty") : "") }),
-									(0, react_jsx_runtime.jsx)("button", {
-										type: "button",
-										className: dirty ? "rcx-saveBtn rcx-saveDirty" : "rcx-saveBtn",
-										disabled: busy || !dirty || (tab === "workspace" && workspace === "" && customPath === null),
-										onClick: save,
-										children: busy ? t("action.saving") : t("action.save")
-									})
-								]
-							})
-						]
-					})
-				]
-			});
+			return scrim;
 		}
 		//#endregion
 		//#region lib/index.js
@@ -446,6 +387,7 @@ window.__ModuleLoader__.load({
 
 			let open = false;
 			let listeners = new Set();
+			let panel = null;
 			const isOpen = () => open;
 			const subscribe = (listener) => { listeners.add(listener); return () => listeners.delete(listener); };
 			const setOpen = (value) => {
@@ -453,42 +395,30 @@ window.__ModuleLoader__.load({
 				open = value;
 				for (const listener of [...listeners]) listener();
 			};
-
-			let container;
-			let root;
-			const mountPanel = () => {
-				container = document.createElement("div");
-				container.dataset.dshPlugin = "rich-context";
-				container.dataset.dshPart = "panel-root";
-				document.body.appendChild(container);
-				root = react_dom_client.createRoot(container);
-				root.render((0, react_jsx_runtime.jsx)(ContextPanel, { onClose: () => teardownPanel() }));
-			};
-			const teardownPanel = () => {
+			const teardown = () => {
 				setOpen(false);
-				root?.unmount();
-				root = undefined;
-				container?.remove();
-				container = undefined;
+				if (panel !== null) { panel.remove(); panel = null; }
+			};
+			const toggle = () => {
+				if (open) { teardown(); return; }
+				panel = createPanel(() => teardown());
+				document.body.appendChild(panel);
+				setOpen(true);
 			};
 
-			const SIDEBAR_ROW_SELECTOR = "[class*=\"sessionRow\"], [class*=\"projectRow\"], [class*=\"searchResultRow\"], [class*=\"searchResultWorkspace\"], [class*=\"newSession\"]";
+			const SIDEBAR_ROW_SELECTOR = '[class*="sessionRow"], [class*="projectRow"], [class*="searchResultRow"], [class*="searchResultWorkspace"], [class*="newSession"]';
 			const onSidebarClick = (event) => {
 				if (!open) return;
 				const target = event.target;
-				if (target !== null && target.closest?.(SIDEBAR_ROW_SELECTOR) !== null) teardownPanel();
+				if (target !== null && target.closest?.(SIDEBAR_ROW_SELECTOR) !== null) teardown();
 			};
 			document.addEventListener("click", onSidebarClick, true);
 
-			const disposeEntry = mountSidebarEntry(
-				() => { if (open) teardownPanel(); else { setOpen(true); mountPanel(); } },
-				isOpen,
-				subscribe
-			);
+			const disposeEntry = mountSidebarEntry(toggle, isOpen, subscribe);
 
 			return () => {
 				document.removeEventListener("click", onSidebarClick, true);
-				teardownPanel();
+				teardown();
 				disposeEntry();
 			};
 		}
