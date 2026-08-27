@@ -113,3 +113,28 @@ did not serve that sentence:
   child's system prompt (identity line + developer_instructions) plus the
   route triple (agentOptions + the seeded request/header through the
   deployment's own in-process driver) and read-only tool filtering.
+
+# v0.4.1 — the actual slight edit
+
+"it's just a slight edit to the normal subagents." Launch is now exactly the
+sanctioned one-shot call: `subagents.start('spawn', { label, prompt, parent,
+signal, agentOptions {provider, model}, persona <file contents>, toolFilter
+})`. The custom provider, driver discovery, and seeded request/header are
+gone (574 host lines, from 1202). Persona injection rides the persona param —
+the same per-child `deployment:persona` section DSH's own subagent path uses.
+The effort field stays in the TOML (Codex parity) but is not applied on the
+subagent path: DSH's AgentOptions has no reasoningEffort, and bridging that
+gap was the overcomplication.
+
+# v0.5 — one tool per persona (the actual slight edit)
+
+"Still seeing 2 different lanes here?" — the umbrella `agents` tool is gone.
+Each persona file registers its own subagent tool instance (the standard
+preset's own idiom for tool-subagent rows): the model sees `security-reviewer`,
+`proof-auditor`, … directly in its tool list and calls them exactly like the
+normal subagent tool — one lane per persona, no roster actions, nothing for a
+child to go meta on. The TOML is re-read at every call, so panel edits apply
+without a restart; route health is validated live at call time. Tool
+registration happens at plugin boot, so a brand-new persona file appears in
+new sessions (same constraint every tool has). Launch is still the sanctioned
+`subagents.start('spawn', { persona, agentOptions, toolFilter })` call.
