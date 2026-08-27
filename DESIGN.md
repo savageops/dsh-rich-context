@@ -71,3 +71,27 @@ Copies + converts (all five effort spellings normalized, `ultra`→`max`,
 from the catalog, stamps `# imported-from:` provenance, never touches the
 source. Agents whose model isn't served (e.g. `gpt-5.6-luna`) import with a
 needs-route badge and refuse to launch until edited.
+
+# v0.3 — Correction: personas run as subagents, not sessions
+
+**Operator correction 2026-08-27:** personas are the delegation vocabulary of
+the calling agent — `agents.launch` now runs a one-shot SUBAGENT through the
+`ctx.subagents` service: per-child `persona` (scoped `deployment:persona`
+section, applied by dsh-subagent's `applyChildComposition`), `agentOptions`
+{provider, model}, and `toolFilter` (read-only sandbox denies write/edit/bash/
+pwsh). The child's final output returns inline to the caller — same contract
+as the built-in `subagent` tool, with a named persona and pinned route.
+
+**Effort on the subagent path:** AgentOptions has no reasoningEffort (the
+workflow seam rejects it loudly), so this plugin registers its own provider
+`agents-persona` that delegates to the deployment's real in-process driver
+(`startInProcessRun`, discovered from the dsh package owning the shipped
+presets, `$DSH_SUBAGENT_DRIVER` overridable) with a one-event seed
+request/header carrying `{provider, model, reasoningEffort}` — the same
+restoration channel session spawn uses. Driver unlocatable → degrades to the
+stock `spawn` provider (persona + provider/model still apply; effort falls
+back to adapter default), never a silent wrong route.
+
+**Panel:** the roster's launch button is now honestly labeled "Run as
+session" (standalone sidebar session — still the right tool for manual,
+independent runs); the model-facing `agents` tool is the subagent path.

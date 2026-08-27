@@ -16,16 +16,17 @@ window.__ModuleLoader__.load({
 			"ag.empty": "No personas yet — create one or import from Codex/Claude/Gemini.",
 			"ag.new": "New agent",
 			"ag.import": "Import…",
-			"ag.launch": "Launch",
+			"ag.launch": "Run as session",
 			"ag.edit": "Edit",
 			"ag.delete": "Delete",
 			"ag.save": "Save",
 			"ag.cancel": "Cancel",
 			"ag.saved": "saved + preset compiled",
-			"ag.launchTitle": "Launch agent",
+			"ag.launchTitle": "Run as session",
+			"ag.launchNote": "This button runs the persona as a standalone sidebar session. The model-facing agents tool runs personas as inline subagents of the calling conversation.",
 			"ag.launchPrompt": "First message for the new session (role, task, requirements)…",
 			"ag.launchCwd": "Working directory",
-			"ag.launching": "Launching…",
+			"ag.launching": "Starting session…",
 			"ag.launched": "launched as",
 			"ag.importTitle": "Import agents",
 			"ag.importHint": "Foreign files are copied + converted; sources are never touched.",
@@ -77,16 +78,17 @@ window.__ModuleLoader__.load({
 			"ag.empty": "还没有人格——新建一个，或从 Codex/Claude/Gemini 导入。",
 			"ag.new": "新建智能体",
 			"ag.import": "导入…",
-			"ag.launch": "启动",
+			"ag.launch": "运行为会话",
 			"ag.edit": "编辑",
 			"ag.delete": "删除",
 			"ag.save": "保存",
 			"ag.cancel": "取消",
 			"ag.saved": "已保存并编译预设",
-			"ag.launchTitle": "启动智能体",
+			"ag.launchTitle": "运行为会话",
+			"ag.launchNote": "此按钮把人格运行为独立的侧栏会话；模型侧的 agents 工具则把人格作为内联子代理运行。",
 			"ag.launchPrompt": "新会话的首条消息（角色、任务、要求）…",
 			"ag.launchCwd": "工作目录",
-			"ag.launching": "启动中…",
+			"ag.launching": "启动会话中…",
 			"ag.launched": "已启动为",
 			"ag.importTitle": "导入智能体",
 			"ag.importHint": "外部文件会被复制并转换，源文件绝不改动。",
@@ -612,7 +614,10 @@ window.__ModuleLoader__.load({
 			launchCwd.className = "rcx-agInput";
 			launchCwd.spellcheck = false;
 			launchCwd.value = "/home/sysadmin";
-			launchForm.append(launchHead, field(t("ag.launchCwd"), launchCwd), field(t("ag.field.prompt"), launchPromptEl));
+			const launchNote = document.createElement("span");
+			launchNote.className = "rcx-agNote";
+			launchNote.textContent = t("ag.launchNote");
+			launchForm.append(launchHead, field(t("ag.launchCwd"), launchCwd), field(t("ag.field.prompt"), launchPromptEl), launchNote);
 			const launchFoot = document.createElement("div");
 			launchFoot.className = "rcx-agFoot";
 			const launchStatus = document.createElement("span");

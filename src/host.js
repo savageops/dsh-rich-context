@@ -771,19 +771,166 @@ async function launchPersona(ctx, { agent, prompt, cwd }) {
   }
 }
 
+// ── Subagent personas: one-shot delegation (true subagents) ──────────────────
+/**
+ * Operator correction 2026-08-27: personas must run as SUBAGENTS — in-process
+ * children of the calling agent whose final output returns inline — not as
+ * separate sidebar sessions. The carrier is the `ctx.subagents` service:
+ * SubagentStartRequest carries per-child `persona` (applied as a scoped
+ * `deployment:persona` section by dsh-subagent's applyChildComposition),
+ * `agentOptions` {provider, model}, and `toolFilter`.
+ *
+ * Effort has no official field on that path (AgentOptions lacks
+ * reasoningEffort and the workflow seam rejects it loudly), but the in-process
+ * driver restores a child's request config from a seeded request/header — the
+ * same mechanism session spawn uses. This plugin therefore registers its own
+ * provider that delegates to the deployment's real driver
+ * (`startInProcessRun`, discovered from the dsh package that owns the shipped
+ * presets) with a one-event seed carrying the full route triple. When the
+ * driver cannot be located, it degrades to the stock `spawn` provider
+ * (persona + provider/model still apply; effort falls back to adapter
+ * default) — never to a silent wrong route.
+ */
+const PERSONA_PROVIDER = 'agents-persona'
+/** label → route triple, stashed by the tool just before subagents.start. */
+const pendingPersonaRoutes = new Map()
+let _driverModule = undefined
+
+async function loadSubagentDriver() {
+  if (_driverModule !== undefined) return _driverModule
+  const candidates = []
+  if (process.env.DSH_SUBAGENT_DRIVER) candidates.push(process.env.DSH_SUBAGENT_DRIVER)
+  for (const root of SHIPPED_PRESET_ROOTS) {
+    const pkgRoot = root.replace(/\/config\/agent-presets$/, '')
+    candidates.push(`${pkgRoot}/node_modules/@deepseek-ai/dsh-subagent-in-process-driver/lib/index.js`)
+    candidates.push(`${pkgRoot}/../../node_modules/@deepseek-ai/dsh-subagent-in-process-driver/lib/index.js`)
+  }
+  for (const spec of [...candidates, '@deepseek-ai/dsh-subagent-in-process-driver']) {
+    try {
+      const module = await import(spec)
+      if (typeof module.startInProcessRun === 'function') {
+        _driverModule = module
+        return module
+      }
+    } catch { /* try next candidate */ }
+  }
+  _driverModule = null
+  console.warn('[dsh-rich-context] subagent driver not found — persona effort falls back to adapter default (persona + provider/model still apply)')
+  return null
+}
+
+/** The persona text handed to the child: identity line + the TOML prompt. */
+function personaTextFor(agent) {
+  const identity = `You are ${agent.name || agent.id}${agent.description ? `, ${agent.description}` : ''}.`
+  return `${identity}\n\n${String(agent.prompt ?? '').trim()}`
+}
+
+/** Codex sandbox_mode → child tool restriction. read-only removes write/exec. */
+function toolFilterFor(sandbox) {
+  if (String(sandbox ?? '').trim() !== 'read-only') return undefined
+  return { deny: ['write', 'edit', 'bash', 'pwsh'] }
+}
+
+const PERSONA_CAPABILITIES = { outputSchema: true, depthLimit: true, toolFilter: true, persona: true }
+
+class PersonaSpawnProvider {
+  constructor(ctx) {
+    this.ctx = ctx
+  }
+
+  name = PERSONA_PROVIDER
+
+  capabilities = PERSONA_CAPABILITIES
+
+  inheritsParentContext = false
+
+  async start(request) {
+    const route = pendingPersonaRoutes.get(request.label)
+    pendingPersonaRoutes.delete(request.label)
+    const driver = route === undefined ? null : await loadSubagentDriver()
+    if (route === undefined || driver === null) {
+      // Degraded path: stock spawn semantics (persona + agentOptions apply;
+      // effort falls back to the adapter default).
+      const fallback = this.ctx.get('subagents')?.getProvider?.('spawn')
+      if (fallback === undefined) throw new Error('persona subagent: no spawn provider and no in-process driver available')
+      return fallback.start(request)
+    }
+    const seed = [{
+      type: 'request/header',
+      seq: 0,
+      time: Date.now(),
+      data: {
+        header: {
+          config: {
+            provider: route.provider,
+            model: route.model,
+            ...(route.effort !== undefined && route.effort !== '' && route.effort !== 'default' ? { reasoningEffort: route.effort } : {}),
+          },
+        },
+        reason: 'initial',
+      },
+    }]
+    return driver.startInProcessRun(request, { seed })
+  }
+
+  prepareContinuable() {
+    return Promise.resolve({})
+  }
+}
+
+/** Run one persona as a one-shot subagent of the calling agent. */
+async function launchPersonaSubagent(ctx, { agent, prompt, requester, signal }) {
+  const subagents = typeof ctx?.get === 'function' ? ctx.get('subagents') : undefined
+  if (subagents === undefined || requester === undefined) {
+    return { ok: false, error: 'subagent delegation requires a calling session (the subagents service and a parent agent)' }
+  }
+  const label = agent.id
+  pendingPersonaRoutes.set(label, { provider: agent.provider, model: agent.model, effort: agent.effort })
+  let run
+  try {
+    run = await subagents.start(PERSONA_PROVIDER, {
+      label,
+      prompt: [{ type: 'text', text: String(prompt) }],
+      parent: requester,
+      signal: signal ?? new AbortController().signal,
+      agentOptions: { provider: agent.provider, model: agent.model },
+      persona: personaTextFor(agent),
+      ...(toolFilterFor(agent.sandbox) !== undefined ? { toolFilter: toolFilterFor(agent.sandbox) } : {}),
+    })
+  } catch (error) {
+    pendingPersonaRoutes.delete(label)
+    return { ok: false, error: `subagent start failed: ${error instanceof Error ? error.message : String(error)}` }
+  }
+  let result
+  try {
+    result = await run.result
+  } finally {
+    run.dispose?.().catch(() => {})
+  }
+  const text = (result?.output ?? [])
+    .filter((block) => block?.type === 'text' && typeof block.text === 'string')
+    .map((block) => block.text)
+    .join('\n\n')
+  return {
+    ok: result?.stopReason === 'completed',
+    stopReason: result?.stopReason ?? 'error',
+    output: text,
+    sessionId: run.id,
+  }
+}
+
 // ── Subagent personas: model-facing `agents` tool ────────────────────────────
 function agentsToolDefinition(ctx) {
   return {
     name: 'agents',
-    description: 'Named subagent personas with fixed routes (provider + model + effort) and their own system prompts, defined in ~/.dsh/agents/*.toml. Use for role-specialized delegation — an auditor, researcher, or implementer persona runs as its own standard session with exactly the route its file pins. Use the built-in `subagent` tool for anonymous one-off children whose result you need inline; agents.launch starts a sibling session (visible in the sidebar) that works independently and does NOT return its result to you. actions: list = roster with routes; read = one full definition including the persona prompt; launch = spawn a session running the persona (id + prompt required, cwd optional, defaults to this session\'s cwd).',
+    description: 'Named subagent personas with fixed routes (provider + model + effort) and their own system prompts, defined in ~/.dsh/agents/*.toml. agents.launch runs a persona as a one-shot SUBAGENT of this session: the child gets the persona as its system prompt, runs on exactly the route its file pins, and its final output returns to you inline — same contract as the built-in `subagent` tool, but with a named persona and route instead of an anonymous child. Use the built-in `subagent` tool for quick anonymous children; use agents when a role matters (auditor, researcher, implementer). actions: list = roster with routes; read = one full definition including the persona prompt; launch = delegate to a persona subagent (id + prompt required).',
     parameters: {
       type: 'object',
       required: ['action'],
       properties: {
-        action: { type: 'string', enum: ['list', 'read', 'launch'], description: 'list = roster; read = one definition; launch = spawn a persona session.' },
+        action: { type: 'string', enum: ['list', 'read', 'launch'], description: 'list = roster; read = one definition; launch = delegate to a persona subagent (result returns inline).' },
         id: { type: 'string', description: 'Agent id (see list). Required for read and launch.' },
-        prompt: { type: 'string', description: 'launch: the complete first message the new session executes — role, task, requirements, and reporting format in one text.' },
-        cwd: { type: 'string', description: 'launch optional: absolute working directory for the new session. Defaults to the calling session\'s cwd.' },
+        prompt: { type: 'string', description: 'launch: the complete task for the persona subagent — role context it lacks, the task, requirements, and the reporting format you want back.' },
       },
     },
     output: {
@@ -794,7 +941,9 @@ function agentsToolDefinition(ctx) {
           message: { type: 'string', description: 'Human-readable result or error.' },
           agents: { type: 'array', items: { type: 'object' }, description: 'list: roster entries {id, name, description, provider, model, effort, routeOk}.' },
           agent: { type: 'object', description: 'read: the full persona definition.' },
-          sessionId: { type: 'string', description: 'launch: the spawned session id.' },
+          sessionId: { type: 'string', description: 'launch: the child session id.' },
+          stopReason: { type: 'string', description: 'launch: completed | aborted | error | max-tokens | refusal.' },
+          output: { type: 'string', description: 'launch: the persona subagent\'s final answer, inline.' },
         },
       },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
@@ -816,11 +965,19 @@ function agentsToolDefinition(ctx) {
       }
       if (action === 'launch') {
         const requester = exec?.agent
-        const cwd = String(args.cwd ?? '').trim() !== '' ? String(args.cwd).trim() : requester?.session?.header?.cwd
-        const result = await launchPersona(ctx, { agent, prompt: args.prompt, cwd })
-        if (!result.ok) return { ok: false, message: result.error }
-        const attachNote = result.attach?.ok === true ? `attached to workspace "${result.attach.workspaceTitle ?? result.attach.workspaceId}".` : `workspace attach: ${result.attach?.error ?? 'skipped'} (session still runs).`
-        return { ok: true, sessionId: result.sessionId, message: `Launched "${id}" as ${result.sessionId} on ${result.provider}/${result.model}/${result.effort}; ${attachNote} It runs independently — its result lands in its own conversation, not here.` }
+        if (requester === undefined) return { ok: false, message: 'launch requires a calling session (run from a live agent).' }
+        if (agent.routeOk !== true) return { ok: false, message: `route invalid: ${agent.routeError ?? 'fix provider/model/effort in the Agents panel'}` }
+        const result = await launchPersonaSubagent(ctx, { agent, prompt: args.prompt, requester, signal: exec?.signal })
+        if (!result.ok && result.error !== undefined) return { ok: false, message: result.error }
+        return {
+          ok: result.ok,
+          sessionId: result.sessionId,
+          stopReason: result.stopReason,
+          output: result.output,
+          message: result.ok
+            ? `Persona "${id}" subagent completed on ${agent.provider}/${agent.model}/${agent.effort}; its answer is in output.`
+            : `Persona "${id}" subagent ended with stopReason ${result.stopReason}; partial output (if any) is in output.`,
+        }
       }
       return { ok: false, message: `unknown action "${action}".` }
     },
@@ -828,7 +985,7 @@ function agentsToolDefinition(ctx) {
 }
 
 /** Test surface for the pure helpers (no service wiring). */
-export const __internals = { parseToml, serializeToml, parseMdAgent, normalizeEffort, buildAgentId, validateRoute, personaRow, compileComposition, readAgentFile }
+export const __internals = { parseToml, serializeToml, parseMdAgent, normalizeEffort, buildAgentId, validateRoute, personaRow, compileComposition, readAgentFile, personaTextFor, toolFilterFor }
 
 export function apply(ctx) {
   ctx.effect(() => {
@@ -1254,7 +1411,22 @@ export function apply(ctx) {
     ]
     const disposers = routes.map((route) => ctx.webServer.register(route))
     const disposeTool = ctx.tools.register(agentsToolDefinition(ctx))
+    // Register the persona subagent provider (one-shot children with route seed).
+    // Lazy ctx.get: absent service (older snapshots) degrades the tool to an error
+    // answer instead of failing the whole plugin at boot.
+    let disposeProvider = undefined
+    try {
+      const subagents = ctx.get?.('subagents')
+      if (subagents !== undefined && typeof subagents.registerProvider === 'function') {
+        disposeProvider = subagents.registerProvider(new PersonaSpawnProvider(ctx))
+      } else {
+        console.warn('[dsh-rich-context] subagents service absent — agents.launch will answer with an error instead of delegating')
+      }
+    } catch (error) {
+      console.warn(`[dsh-rich-context] persona provider registration failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
     return () => {
+      disposeProvider?.()
       disposeTool?.()
       for (const dispose of disposers.reverse()) dispose()
     }

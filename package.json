@@ -1,6 +1,6 @@
 {
   "name": "dsh-rich-context",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Agent manager for DeepSeek Harness: edit AGENTS.md (global + per-workspace) and subagent personas — one Codex-style TOML per role carrying a provider/model/effort route, compiled to a DSH agent preset, launchable as a real session from the panel or the model-facing agents tool.",
   "keywords": [
     "deepseek-harness",
