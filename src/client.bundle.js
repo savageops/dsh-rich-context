@@ -16,18 +16,11 @@ window.__ModuleLoader__.load({
 			"ag.empty": "No personas yet — create one or import from Codex/Claude/Gemini.",
 			"ag.new": "New agent",
 			"ag.import": "Import…",
-			"ag.launch": "Run as session",
 			"ag.edit": "Edit",
 			"ag.delete": "Delete",
 			"ag.save": "Save",
 			"ag.cancel": "Cancel",
 			"ag.saved": "saved + preset compiled",
-			"ag.launchTitle": "Run as session",
-			"ag.launchNote": "This button runs the persona as a standalone sidebar session. The model-facing agents tool runs personas as inline subagents of the calling conversation.",
-			"ag.launchPrompt": "First message for the new session (role, task, requirements)…",
-			"ag.launchCwd": "Working directory",
-			"ag.launching": "Starting session…",
-			"ag.launched": "launched as",
 			"ag.importTitle": "Import agents",
 			"ag.importHint": "Foreign files are copied + converted; sources are never touched.",
 			"ag.importSelected": "Import selected",
@@ -43,7 +36,6 @@ window.__ModuleLoader__.load({
 			"ag.field.sandbox": "Sandbox",
 			"ag.field.prompt": "System prompt (developer_instructions)",
 			"ag.sandboxNote": "Stored for round-trip with Codex; DSH presets do not enforce it.",
-			"ag.routeIncomplete": "set provider + model + effort before launch",
 			"tab.global": "Global",
 			"tab.workspace": "Workspace",
 			"tab.global.hint": "~/.dsh/AGENTS.md — applies to every session",
@@ -78,18 +70,11 @@ window.__ModuleLoader__.load({
 			"ag.empty": "还没有人格——新建一个，或从 Codex/Claude/Gemini 导入。",
 			"ag.new": "新建智能体",
 			"ag.import": "导入…",
-			"ag.launch": "运行为会话",
 			"ag.edit": "编辑",
 			"ag.delete": "删除",
 			"ag.save": "保存",
 			"ag.cancel": "取消",
 			"ag.saved": "已保存并编译预设",
-			"ag.launchTitle": "运行为会话",
-			"ag.launchNote": "此按钮把人格运行为独立的侧栏会话；模型侧的 agents 工具则把人格作为内联子代理运行。",
-			"ag.launchPrompt": "新会话的首条消息（角色、任务、要求）…",
-			"ag.launchCwd": "工作目录",
-			"ag.launching": "启动会话中…",
-			"ag.launched": "已启动为",
 			"ag.importTitle": "导入智能体",
 			"ag.importHint": "外部文件会被复制并转换，源文件绝不改动。",
 			"ag.importSelected": "导入选中",
@@ -105,7 +90,6 @@ window.__ModuleLoader__.load({
 			"ag.field.sandbox": "沙箱",
 			"ag.field.prompt": "系统提示词（developer_instructions）",
 			"ag.sandboxNote": "与 Codex 往返保留；DSH 预设不强制执行。",
-			"ag.routeIncomplete": "启动前需设置 provider + model + effort",
 			"tab.global": "全局",
 			"tab.workspace": "工作区",
 			"tab.global.hint": "~/.dsh/AGENTS.md——作用于所有会话",
@@ -268,12 +252,7 @@ window.__ModuleLoader__.load({
 			const res = await fetch(`${API}/agents/import`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ paths }) });
 			return res.json();
 		}
-		async function launchAgent(id, prompt, cwd) {
-			const res = await fetch(`${API}/agents/launch`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, prompt, cwd }) });
-			return res.json();
-		}
-		//#endregion
-		//#region lib/sidebar.js
+
 		const ENTRY_ATTR = "data-dsh-rich-context-entry";
 		const FAMILY = ["[data-dsh-taskboard-entry]", "[data-dsh-ssh-entry]", "[data-dsh-skill-explorer-entry]", "[data-dsh-generative-ideas-entry]", `[${ENTRY_ATTR}]`];
 		const ICON = `<svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="5" r="2.3"/><path d="M1.8 13.2c.6-2.4 2-3.7 3.7-3.7s3.1 1.3 3.7 3.7"/><circle cx="11.2" cy="5.6" r="1.9"/><path d="M10.6 9.6c1.9.1 3.1 1.3 3.6 3.2"/></svg>`;
@@ -347,15 +326,15 @@ window.__ModuleLoader__.load({
 		//#endregion
 		//#region lib/agents-view.js
 		/**
-		 * The "Agents" mode of the panel — persona roster, editor, launch
-		 * dialog, importer. Pure DOM; talks to /api/rich-context/agents/*.
+		 * The "Agents" mode of the panel — persona roster, editor, and importer. Pure DOM; talks to
+		 * /api/rich-context/agents/*. Personas are LAUNCHED by the model via
+		 * the `agents` tool as inline subagents — the panel only edits files.
 		 */
 		function createAgentsView() {
 			let view = "roster";
 			let agents = [];
 			let catalog = null;
 			let editing = null; // { prevId, agent }
-			let launching = null; // agent being launched
 			let candidates = [];
 			const checked = new Set();
 
@@ -444,7 +423,6 @@ window.__ModuleLoader__.load({
 						return btn;
 					};
 					actions.append(
-						mkBtn(t("ag.launch"), "rcx-agBtn", () => { if (agent.broken !== true) { launching = agent; launchPromptEl.value = ""; setView("launch"); } }),
 						mkBtn(t("ag.edit"), "rcx-agBtn", () => { if (agent.broken !== true) { editing = { prevId: agent.id, agent: { ...agent } }; setView("edit"); } }),
 						mkBtn(t("ag.delete"), "rcx-agBtn rcx-agBtnDanger", () => {
 							if (window.confirm(`Delete agent "${agent.id}"?`)) deleteAgent(agent.id).then(() => refresh());
@@ -593,62 +571,6 @@ window.__ModuleLoader__.load({
 				fillModels();
 			};
 
-			// ── Launch ───────────────────────────────────────────────────────
-			const launchView = document.createElement("div");
-			launchView.className = "rcx-body";
-			const launchForm = document.createElement("div");
-			launchForm.className = "rcx-agForm";
-			const launchHead = document.createElement("div");
-			launchHead.className = "rcx-agField";
-			const launchHeadLabel = document.createElement("span");
-			launchHeadLabel.className = "rcx-agLabel";
-			launchHeadLabel.textContent = t("ag.launchTitle");
-			const launchHeadChips = document.createElement("div");
-			launchHeadChips.className = "rcx-agChips";
-			launchHead.append(launchHeadLabel, launchHeadChips);
-			const launchPromptEl = document.createElement("textarea");
-			launchPromptEl.className = "rcx-agInput rcx-agPrompt";
-			launchPromptEl.spellcheck = false;
-			launchPromptEl.placeholder = t("ag.launchPrompt");
-			const launchCwd = document.createElement("input");
-			launchCwd.className = "rcx-agInput";
-			launchCwd.spellcheck = false;
-			launchCwd.value = "/home/sysadmin";
-			const launchNote = document.createElement("span");
-			launchNote.className = "rcx-agNote";
-			launchNote.textContent = t("ag.launchNote");
-			launchForm.append(launchHead, field(t("ag.launchCwd"), launchCwd), field(t("ag.field.prompt"), launchPromptEl), launchNote);
-			const launchFoot = document.createElement("div");
-			launchFoot.className = "rcx-agFoot";
-			const launchStatus = document.createElement("span");
-			launchStatus.className = "rcx-status";
-			const launchCancel = document.createElement("button");
-			launchCancel.type = "button";
-			launchCancel.className = "rcx-saveBtn";
-			launchCancel.textContent = t("ag.cancel");
-			launchCancel.addEventListener("click", () => setView("roster"));
-			const launchGo = document.createElement("button");
-			launchGo.type = "button";
-			launchGo.className = "rcx-saveBtn rcx-saveDirty";
-			launchGo.textContent = t("ag.launch");
-			launchGo.addEventListener("click", () => {
-				launchStatus.className = "rcx-status";
-				launchStatus.textContent = t("ag.launching");
-				launchGo.disabled = true;
-				launchAgent(launching?.id, launchPromptEl.value, launchCwd.value.trim()).then((result) => {
-					if (result.ok !== true) throw new Error(result.error);
-					launchStatus.className = "rcx-status rcx-statusOk";
-					launchStatus.textContent = `${t("ag.launched")} ${result.sessionId}`;
-					window.setTimeout(() => setView("roster"), 1400);
-				}).catch((cause) => {
-					launchStatus.className = "rcx-status rcx-statusErr";
-					launchStatus.textContent = `${t("error.generic")}: ${cause.message}`;
-				}).finally(() => { launchGo.disabled = false; });
-			});
-			launchFoot.append(launchStatus, launchCancel, launchGo);
-			launchView.append(launchForm, launchFoot);
-
-			// ── Import ───────────────────────────────────────────────────────
 			const importView = document.createElement("div");
 			importView.className = "rcx-body";
 			const importList = document.createElement("div");
@@ -742,12 +664,11 @@ window.__ModuleLoader__.load({
 			};
 
 			// ── Wiring ───────────────────────────────────────────────────────
-			root.append(rosterView, editView, launchView, importView);
+			root.append(rosterView, editView, importView);
 			const setView = (next) => {
 				view = next;
 				rosterView.style.display = next === "roster" ? "" : "none";
 				editView.style.display = next === "edit" ? "" : "none";
-				launchView.style.display = next === "launch" ? "" : "none";
 				importView.style.display = next === "import" ? "" : "none";
 				if (next === "edit" && editing !== null) {
 					idInput.value = editing.agent.id ?? "";
@@ -759,14 +680,6 @@ window.__ModuleLoader__.load({
 					fillRouteSelects({ ...editing.agent });
 					editStatus.className = "rcx-status";
 					editStatus.textContent = "";
-				}
-				if (next === "launch" && launching !== null) {
-					launchHeadChips.innerHTML = "";
-					for (const chip of chipsFor(launching)) launchHeadChips.append(chip);
-					launchGo.disabled = launching.routeOk !== true;
-					launchStatus.className = "rcx-status";
-					launchStatus.textContent = launching.routeOk === true ? "" : (launching.routeError ?? t("ag.routeIncomplete"));
-					launchCwd.value = "/home/sysadmin";
 				}
 			};
 

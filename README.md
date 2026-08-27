@@ -23,14 +23,12 @@ Restart the `dsh web` process. An **Agents** entry appears in the sidebar (under
 **Agents** — the persona roster:
 
 - One `~/.dsh/agents/<id>.toml` per agent: `name`, `description`, `provider`, `model`, `effort`, `sandbox_mode`, `developer_instructions` (the system prompt)
-- Every route is validated against the live model catalog — the same source the GUI model picker uses; glm-5.3 offers `high|max`, models without reasoning take `default`
-- Each persona **compiles to a DSH agent preset** (`~/.dsh/.agent-presets/<id>/`, standard composition with the persona row spliced in), so sessions compose from it like any preset
-- **Launch** spawns a real standard session: the seed request/header carries the full `{provider, model, reasoningEffort}` triple — the effort field no other spawn surface exposes — with the preset mounted and the workspace attached
-- **Import** copies + converts foreign agent files (Codex TOML from `~/.codex/agents` / `/root/.codex/agents`, Claude/Gemini markdown frontmatter), normalizing all five effort spellings; sources are never touched and provenance is stamped
+- Saves are free-form; the roster computes route health live against the model catalog; `agents launch` refuses invalid routes
+- **Import** copies + converts foreign agent files (Codex TOML, Claude/Gemini markdown frontmatter), normalizing all five effort spellings; sources are never touched
 
 ## Model-facing `agents` tool
 
-The plugin registers an `agents` tool: `list` the roster with routes, `read` one definition, `launch` a persona session. Use it for role-specialized delegation (auditor, researcher, implementer); the built-in `subagent` tool remains the right choice for anonymous children whose result you need inline.
+`agents launch` runs a persona as a one-shot **subagent** of the calling session: the persona file's contents become the child's system prompt, the child runs on the route its file pins, and its final output returns inline — the same contract as Claude Code / Codex subagents. `list` shows the roster, `read` one definition. Read-only personas get write/exec tools denied.
 
 ## Architecture
 

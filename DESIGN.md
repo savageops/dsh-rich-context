@@ -95,3 +95,21 @@ back to adapter default), never a silent wrong route.
 **Panel:** the roster's launch button is now honestly labeled "Run as
 session" (standalone sidebar session — still the right tool for manual,
 independent runs); the model-facing `agents` tool is the subagent path.
+
+# v0.4 — YAGNI pass (operator correction #2)
+
+"Nothing changes really — subagents get their own context injected (the
+agents/ file contents itself). See codex, claude, zcode." Cut everything that
+did not serve that sentence:
+
+- **Cut:** preset compilation (agent.cordis.yml generation, markers, reserved
+  ids — generated dirs removed), session spawning (seed route, workspace
+  attach, the /agents/launch HTTP route), the panel launch button, and
+  strict save-time catalog validation. Saves are free-form; roster computes
+  route health live; launch refuses invalid routes.
+- **Kept:** ~/.dsh/agents/*.toml store, panel editor + importer, catalog-fed
+  route pickers, and the `agents` tool — list / read / **launch** = one-shot
+  subagent via ctx.subagents with the persona file contents injected as the
+  child's system prompt (identity line + developer_instructions) plus the
+  route triple (agentOptions + the seeded request/header through the
+  deployment's own in-process driver) and read-only tool filtering.
