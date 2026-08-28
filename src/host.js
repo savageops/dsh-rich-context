@@ -208,7 +208,7 @@ function guard(req, res) {
  */
 function parseToml(text) {
   const root = {}
-  const lines = String(text ?? '').split('\n')
+  const lines = String(text ?? '').replace(/\r\n/g, '\n').split('\n')
   let table = ''
   let i = 0
   while (i < lines.length) {
@@ -261,13 +261,10 @@ function parseToml(text) {
   return root
 }
 
-/** Decode TOML basic-string escapes. */
+/** Decode TOML basic-string escapes in ONE pass — sequential replaces double-unescaped
+ *  serialized backslashes (\\n became a real newline, corrupting Windows paths/regexes). */
 function decodeTomlString(text) {
-  return String(text)
-    .replace(/\\(["\\])/g, '$1')
-    .replace(/\\n/g, '\n')
-    .replace(/\\t/g, '\t')
-    .replace(/\\r/g, '\r')
+  return String(text).replace(/\\(["\\ntr])/g, (_, c) => (c === 'n' ? '\n' : c === 't' ? '\t' : c === 'r' ? '\r' : c))
 }
 
 /** Escape a value for a TOML single-line basic string. */
@@ -277,7 +274,7 @@ function encodeTomlBasic(value) {
 
 /** Serialize the persona TOML in canonical field order. */
 function serializeToml(agent, provenance) {
-  const head = provenance ? `# imported-from: ${provenance}\n` : ''
+  const head = provenance ? `# imported-from: ${String(provenance).replace(/[\r\n]+/g, ' ')}\n` : ''
   const body = String(agent.prompt ?? '')
     .replace(/[\\]/g, '\\\\')
     .replace(/"""/g, '\\"\\"\\"')
@@ -418,17 +415,23 @@ async function buildCatalog(ctx) {
         if (staticMap !== null && typeof staticMap === 'object') {
           for (const key of Object.keys(staticMap)) efforts.add(key)
         }
+        let effortsUnknown = false
         if (efforts.size === 0 && typeof llm.resolveModelInfo === 'function') {
           try {
             const info = await llm.resolveModelInfo(providerId, id)
             for (const effort of info?.reasoning?.efforts ?? []) efforts.add(String(effort.id))
             if (info?.reasoning?.defaultEffort !== undefined) defaultEffort = String(info.reasoning.defaultEffort)
-          } catch { /* no adapter metadata — model has no effort list */ }
+          } catch {
+            // Transient fetch failure is NOT a model property — flag it so
+            // validation says "retry" instead of lying "supports no efforts".
+            effortsUnknown = true
+          }
         }
         models[id] = {
           name: typeof rawModel?.name === 'string' && rawModel.name !== '' ? rawModel.name : id,
           efforts: [...efforts],
           defaultEffort,
+          ...(effortsUnknown === true ? { effortsUnknown: true } : {}),
         }
       }
       providers[providerId] = {
@@ -456,6 +459,7 @@ function validateRoute(catalog, provider, model, effort) {
   const modelEntry = providerEntry.models[String(model ?? '')]
   if (modelEntry === undefined) return { ok: false, error: `model "${model ?? ''}" is not in provider "${provider}"` }
   if (modelEntry.efforts.length === 0) {
+    if (modelEntry.effortsUnknown === true && effort !== 'default') return { ok: false, error: `catalog metadata unavailable for ${provider}/${model} — retry in a moment` }
     if (effort !== 'default') return { ok: false, error: `model "${model}" supports no reasoning efforts — use "default"` }
     return { ok: true }
   }
@@ -493,7 +497,7 @@ function listAgents(catalog) {
     const route = agent.provider === '' || agent.model === ''
       ? { ok: false, error: 'route incomplete — provider and model are required' }
       : validateRoute(catalog, agent.provider, agent.model, agent.effort)
-    return { ...agent, routeOk: route.ok, routeError: route.ok ? null : route.error }
+    return { ...agent, routeOk: route.ok, routeError: route.ok ? null : route.error, toolRegistered: registeredPersonaTools.has(agent.id) }
   })
 }
 
@@ -520,13 +524,16 @@ function importCandidates(catalog) {
       let provider = String(parsed.provider ?? '').trim()
       if (provider === '') provider = resolveProviderForModel(catalog, String(parsed.model ?? ''))
       const effortKey = EFFORT_KEYS.find((key) => parsed[key] !== undefined && String(parsed[key]).trim() !== '')
+      const baseId = id
+      let uniqueId = id
+      for (let n = 2; candidates.some((c) => c.id === uniqueId); n += 1) uniqueId = `${baseId}-${n}`
       candidates.push({
         path,
         real,
         source: source.label,
         format: source.format,
-        id,
-        exists: existing.has(id),
+        id: uniqueId,
+        exists: existing.has(uniqueId),
         name: String(parsed.name ?? stem).trim() || id,
         description: String(parsed.description ?? '').trim(),
         provider,
@@ -580,14 +587,17 @@ async function launchPersonaSubagent(ctx, { agent, prompt, requester, signal }) 
   } finally {
     run.dispose?.().catch(() => {})
   }
-  const text = (result?.output ?? [])
+  const blocks = result?.output ?? []
+  const text = blocks
     .filter((block) => block?.type === 'text' && typeof block.text === 'string')
     .map((block) => block.text)
     .join('\n\n')
+  const omitted = blocks.filter((block) => block?.type !== 'text').length
   return {
     ok: result?.stopReason === 'completed',
     stopReason: result?.stopReason ?? 'error',
     output: text,
+    ...(omitted > 0 ? { nonTextBlocksOmitted: omitted } : {}),
     sessionId: run.id,
   }
 }
@@ -628,9 +638,11 @@ function personaToolDefinition(ctx, agent) {
     async execute(args, exec) {
       const requester = exec?.agent
       if (requester === undefined) return { ok: false, message: 'this persona runs as a subagent and requires a calling session.' }
+      if (typeof args?.prompt !== 'string' || args.prompt.trim() === '') return { ok: false, message: 'prompt is required.' }
       // Re-read the file so edits apply without a process restart.
       const fresh = readAgentFile(join(AGENTS_DIR, `${agent.id}.toml`))
-      const current = fresh ?? agent
+      if (fresh === null) return { ok: false, message: `persona file for "${agent.id}" is missing or unparsable — restore it or remove the tool registration with a restart.` }
+      const current = fresh
       const catalog = await buildCatalog(ctx)
       const route = current.provider === '' || current.model === ''
         ? { ok: false, error: 'route incomplete — set provider and model in the Agents panel' }
@@ -651,14 +663,22 @@ function personaToolDefinition(ctx, agent) {
   }
 }
 
-/** Register one tool per persona file; name collisions are skipped loudly. */
+/** Persona ids whose tools registered this boot (roster visibility, review P1). */
+const registeredPersonaTools = new Set()
+
+/** Register one tool per persona file; skips are loud and roster-visible. */
 function registerPersonaTools(ctx) {
   const disposers = []
+  registeredPersonaTools.clear()
   for (const file of listAgentFiles()) {
     const agent = readAgentFile(file)
-    if (agent === null || !PRESET_ID_RE.test(agent.id) || String(agent.prompt ?? '').trim() === '') continue
+    if (agent === null || !PRESET_ID_RE.test(agent.id) || String(agent.prompt ?? '').trim() === '') {
+      console.warn(`[dsh-rich-context] persona "${file.split('/').pop()}" skipped at registration (unparsable, invalid id, or empty prompt)`)
+      continue
+    }
     try {
       disposers.push(ctx.tools.register(personaToolDefinition(ctx, agent)))
+      registeredPersonaTools.add(agent.id)
     } catch (error) {
       console.warn(`[dsh-rich-context] persona tool "${agent.id}" not registered: ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -990,7 +1010,8 @@ export function apply(ctx) {
           if (!PRESET_ID_RE.test(agent.id)) { writeJson(res, 400, { ok: false, error: 'invalid-id — must match [a-z0-9][a-z0-9-]*' }); return }
           if (agent.name === '') agent.name = agent.id
           if (agent.prompt === '') { writeJson(res, 400, { ok: false, error: 'prompt-required — developer_instructions cannot be empty' }); return }
-          const prevId = typeof body.prevId === 'string' && body.prevId !== '' ? body.prevId : null
+          let prevId = typeof body.prevId === 'string' && body.prevId !== '' ? body.prevId : null
+          if (prevId !== null && !PRESET_ID_RE.test(prevId)) { writeJson(res, 400, { ok: false, error: 'invalid-prev-id' }); return }
           // YAGNI pass: saves are free-form (Claude-style skip-with-diagnostic);
           // the roster computes route health live and launch refuses invalid routes.
           try {
@@ -1027,7 +1048,13 @@ export function apply(ctx) {
         handler: async (req, res) => {
           if (req.method !== 'GET' && req.method !== 'POST') { writeJson(res, 405, { ok: false, error: 'method-not-allowed' }); return }
           if (!guard(req, res)) return
-          const catalog = await buildCatalog(ctx)
+          let catalog
+          try { catalog = await buildCatalog(ctx) }
+          catch (error) {
+            console.warn(`[dsh-rich-context] catalog build failed: ${error instanceof Error ? error.message : String(error)}`)
+            writeJson(res, 500, { ok: false, error: 'catalog-unavailable' })
+            return
+          }
           if (req.method === 'GET') {
             writeJson(res, 200, { ok: true, candidates: importCandidates(catalog) })
             return

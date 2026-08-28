@@ -327,8 +327,8 @@ window.__ModuleLoader__.load({
 		//#region lib/agents-view.js
 		/**
 		 * The "Agents" mode of the panel — persona roster, editor, and importer. Pure DOM; talks to
-		 * /api/rich-context/agents/*. Personas are LAUNCHED by the model via
-		 * the `agents` tool as inline subagents — the panel only edits files.
+		 * /api/rich-context/agents/*. The model launches personas through the
+		 * per-persona subagent tool named after the agent id — the panel only edits files.
 		 */
 		function createAgentsView() {
 			let view = "roster";
