@@ -688,7 +688,7 @@ function registerPersonaTools(ctx) {
 
 /** Test surface for the pure helpers (no service wiring). */
 export const name = 'dsh-rich-context'
-export const inject = ['tools', 'webServer', 'agents', 'systemPrompt']
+export const inject = ['tools', 'webServer']
 
 export const __internals = { parseToml, serializeToml, parseMdAgent, normalizeEffort, buildAgentId, validateRoute, readAgentFile, personaTextFor, toolFilterFor }
 
