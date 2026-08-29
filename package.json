@@ -1,16 +1,13 @@
 {
   "name": "dsh-rich-context",
-  "version": "0.5.0",
-  "description": "Subagent personas for DeepSeek Harness: each ~/.dsh/agents/*.toml becomes its own subagent tool — the persona file is the child system prompt, the route is pinned, output returns inline.",
+  "version": "0.6.0",
+  "description": "Agent instruction manager for DeepSeek Harness: edit, refine, and template the AGENTS.md files the harness actually reads — the user-global ~/.dsh/AGENTS.md and per-workspace AGENTS.md — from a sidebar panel.",
   "keywords": [
     "deepseek-harness",
     "deepseek-harness-plugin",
     "dsh-plugin",
     "dsh",
     "agents-md",
-    "subagents",
-    "agent-personas",
-    "agent-presets",
     "context-management",
     "instruction-files",
     "web-gui"
